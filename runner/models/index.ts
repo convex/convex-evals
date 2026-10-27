@@ -46,6 +46,7 @@ export const ALL_MODELS: string[] = [
   "z-ai/glm-5.3-flash",
   "poolside/laguna-s-2.1",
   "moonshotai/kimi-k3",
+  "moonshotai/kimi-k3.1-pro",
   "x-ai/grok-4.6",
   "x-ai/grok-4.5",
   "meta/muse-wonder",
