@@ -10,6 +10,8 @@ import { internal } from "./_generated/api.js";
 import type { Doc, Id } from "./_generated/dataModel.js";
 import {
   assertDecisionIngestionEnabled,
+  DECISION_REPOSITORIES,
+  DECISION_WORKFLOW_REFS,
   MAX_DECISION_RECORD_BATCH,
   MAX_DECISION_QUESTION_EVIDENCE_BYTES,
   MAX_DECISION_RUN_EVIDENCE_COMPRESSED_BYTES,
@@ -356,12 +358,9 @@ function assertAllowedOrigin(origin: Origin): void {
   }
   if (
     deploymentUrl !== DECISION_PRODUCTION_URL ||
-    origin.repository !== "get-convex/convex-evals" ||
+    !DECISION_REPOSITORIES.includes(origin.repository) ||
     origin.ref !== "refs/heads/main" ||
-    ![
-      "get-convex/convex-evals/.github/workflows/decision_evals.yml@refs/heads/main",
-      "get-convex/convex-evals/.github/workflows/mint_benchmark.yml@refs/heads/main",
-    ].includes(origin.workflow) ||
+    !DECISION_WORKFLOW_REFS.includes(origin.workflow) ||
     !/^\d+$/.test(origin.runId) ||
     !Number.isSafeInteger(origin.runAttempt) ||
     origin.runAttempt < 1 ||

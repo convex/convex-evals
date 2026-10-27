@@ -179,7 +179,7 @@ export interface GitHubRelease {
 let cachedReleases: GitHubRelease[] | null = null;
 
 const RELEASES_URL =
-  "https://api.github.com/repos/get-convex/convex-backend/releases?per_page=50";
+  "https://api.github.com/repos/convex/convex-backend/releases?per_page=50";
 const RELEASE_FETCH_MAX_ATTEMPTS = 5;
 const RELEASE_FETCH_TIMEOUT_MS = 30_000;
 const RELEASE_FETCH_BASE_DELAY_MS = 5_000;

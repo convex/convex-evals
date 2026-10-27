@@ -164,9 +164,9 @@ describe("decision ingestion actions", () => {
         plannedQuestions: [questionKey],
         origin: {
           kind: "github_actions",
-          repository: "get-convex/convex-evals",
+          repository: "convex/convex-evals",
           workflow:
-            "get-convex/convex-evals/.github/workflows/decision_evals.yml@refs/heads/main",
+            "convex/convex-evals/.github/workflows/decision_evals.yml@refs/heads/main",
           runId: "123",
           runAttempt: 1,
           ref: "refs/heads/main",

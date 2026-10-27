@@ -34,7 +34,7 @@ The probe accepts positive finite native stream limits and pagination page sizes
 It does not prove arbitrary JavaScript loop termination or worst-case rows/bytes
 scanned. Real-backend tests, rather than the synthetic probe, check database
 semantics and returned documents. Complete traversal and batching coverage is
-tracked in [issue #286](https://github.com/get-convex/convex-evals/issues/286).
+tracked in [issue #286](https://github.com/convex/convex-evals/issues/286).
 
 The task, guidelines, reference answer, and application schemas are unchanged.
 No AI grader was introduced.

@@ -1,7 +1,7 @@
 # Reviewed decision bank, September 23
 
 Minted on 2026-09-23 as decision benchmark `754a560e`
-([workflow run 35812952611](https://github.com/get-convex/convex-evals/actions/runs/35812952611)).
+([workflow run 35812952611](https://github.com/convex/convex-evals/actions/runs/35812952611)).
 
 The bank now contains 108 questions across 90 of the original 112 coding tasks.
 The review retained 104 questions, replaced two and added two. It did not remove

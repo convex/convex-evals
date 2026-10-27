@@ -17,6 +17,18 @@ export const MAX_DECISION_RUN_EVIDENCE_COMPRESSED_BYTES = 8 * 1024 * 1024;
 export const MAX_DECISION_RUN_EVIDENCE_DECOMPRESSED_BYTES = 64 * 1024 * 1024;
 export const MAX_DECISION_OUTPUT_TOKENS = 8_192;
 
+// The GitHub org was renamed from get-convex to convex. GitHub now reports the
+// new name, but both are accepted so reporting keeps working while the runner
+// and this backend are deployed separately. Drop get-convex once both are out.
+export const DECISION_REPOSITORIES = [
+  "convex/convex-evals",
+  "get-convex/convex-evals",
+];
+export const DECISION_WORKFLOW_REFS = DECISION_REPOSITORIES.flatMap((repo) => [
+  `${repo}/.github/workflows/decision_evals.yml@refs/heads/main`,
+  `${repo}/.github/workflows/mint_benchmark.yml@refs/heads/main`,
+]);
+
 export function assertDecisionIngestionEnabled(
   enabled = DECISION_INGESTION_ENABLED,
 ): void {

@@ -35,7 +35,7 @@ describe("release fetch retries", () => {
     async (token) => {
       const fetchImpl = (async (url, init) => {
         expect(url).toBe(
-          "https://api.github.com/repos/get-convex/convex-backend/releases?per_page=50",
+          "https://api.github.com/repos/convex/convex-backend/releases?per_page=50",
         );
         const headers = new Headers(init?.headers);
         expect(headers.get("Authorization")).toBe(
@@ -173,22 +173,22 @@ describe("release asset matching", () => {
         {
           name: "convex-local-backend-x86_64-pc-windows-msvc.zip",
           browser_download_url:
-            "https://github.com/get-convex/convex-backend/releases/download/precompiled-2026-02-06-beabc80/convex-local-backend-x86_64-pc-windows-msvc.zip",
+            "https://github.com/convex/convex-backend/releases/download/precompiled-2026-02-06-beabc80/convex-local-backend-x86_64-pc-windows-msvc.zip",
         },
         {
           name: "convex-local-backend-x86_64-unknown-linux-gnu.zip",
           browser_download_url:
-            "https://github.com/get-convex/convex-backend/releases/download/precompiled-2026-02-06-beabc80/convex-local-backend-x86_64-unknown-linux-gnu.zip",
+            "https://github.com/convex/convex-backend/releases/download/precompiled-2026-02-06-beabc80/convex-local-backend-x86_64-unknown-linux-gnu.zip",
         },
         {
           name: "convex-local-backend-x86_64-apple-darwin.zip",
           browser_download_url:
-            "https://github.com/get-convex/convex-backend/releases/download/precompiled-2026-02-06-beabc80/convex-local-backend-x86_64-apple-darwin.zip",
+            "https://github.com/convex/convex-backend/releases/download/precompiled-2026-02-06-beabc80/convex-local-backend-x86_64-apple-darwin.zip",
         },
         {
           name: "convex-local-backend-aarch64-apple-darwin.zip",
           browser_download_url:
-            "https://github.com/get-convex/convex-backend/releases/download/precompiled-2026-02-06-beabc80/convex-local-backend-aarch64-apple-darwin.zip",
+            "https://github.com/convex/convex-backend/releases/download/precompiled-2026-02-06-beabc80/convex-local-backend-aarch64-apple-darwin.zip",
         },
       ],
     },
