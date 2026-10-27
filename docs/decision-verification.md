@@ -62,7 +62,7 @@ node verification/decisions/replay.mjs staged-index --output staged-index-replay
 
 Static rejection and SDK execution remain separate observations. The three incorrect options are executed with typechecking bypassed deliberately, so the report can distinguish rejected signatures, an absent method, and an ordinary index descriptor. Runtime success alone does not make a choice correct.
 
-For the real-backend adapter, supply a Convex local backend binary that supports `keygen admin-key`. The original run used release `precompiled-2026-09-16-8600144`, with SHA-256 `cf8e4761382ab4b758198af6209074cf3d0b5abd84697c27c7e0ab44baff58e7` for its macOS binary. Obtain the appropriate platform binary from the [Convex backend releases](https://github.com/get-convex/convex-backend/releases/tag/precompiled-2026-09-16-8600144). The adapter does not download or execute an unrequested binary automatically.
+For the real-backend adapter, supply a Convex local backend binary that supports `keygen admin-key`. The original run used release `precompiled-2026-09-16-8600144`, with SHA-256 `cf8e4761382ab4b758198af6209074cf3d0b5abd84697c27c7e0ab44baff58e7` for its macOS binary. Obtain the appropriate platform binary from the [Convex backend releases](https://github.com/convex/convex-backend/releases/tag/precompiled-2026-09-16-8600144). The adapter does not download or execute an unrequested binary automatically.
 
 ```sh
 node verification/decisions/replay.mjs visibility \

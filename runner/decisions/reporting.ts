@@ -7,6 +7,8 @@ import { sha256 } from "./source.js";
 import { usesNativeDecisionApi } from "./providers.js";
 import { canonicalJson } from "../../evalScores/convex/decisionIdentity.js";
 import {
+  DECISION_REPOSITORIES,
+  DECISION_WORKFLOW_REFS,
   MAX_DECISION_QUESTION_EVIDENCE_BYTES,
   MAX_DECISION_RUN_EVIDENCE_COMPRESSED_BYTES,
 } from "../../evalScores/convex/decisionConfig.js";
@@ -80,15 +82,12 @@ export function decisionReportingTarget(
     url !== DECISION_PRODUCTION_URL ||
     env.GITHUB_ACTIONS !== "true" ||
     env.GITHUB_REF !== "refs/heads/main" ||
-    env.GITHUB_REPOSITORY !== "get-convex/convex-evals" ||
+    !DECISION_REPOSITORIES.includes(env.GITHUB_REPOSITORY ?? "") ||
     env.GITHUB_SHA !== sourceCommit ||
     !/^\d+$/.test(env.GITHUB_RUN_ID ?? "") ||
     !Number.isSafeInteger(runAttempt) ||
     runAttempt < 1 ||
-    ![
-      "get-convex/convex-evals/.github/workflows/decision_evals.yml@refs/heads/main",
-      "get-convex/convex-evals/.github/workflows/mint_benchmark.yml@refs/heads/main",
-    ].includes(env.GITHUB_WORKFLOW_REF ?? "")
+    !DECISION_WORKFLOW_REFS.includes(env.GITHUB_WORKFLOW_REF ?? "")
   )
     throw new Error(
       "Production decision reporting requires the approved main-branch GitHub Actions workflow",
@@ -98,7 +97,7 @@ export function decisionReportingTarget(
     token: env.CONVEX_AUTH_TOKEN,
     origin: {
       kind: "github_actions",
-      repository: env.GITHUB_REPOSITORY,
+      repository: env.GITHUB_REPOSITORY!,
       workflow: env.GITHUB_WORKFLOW_REF!,
       runId: env.GITHUB_RUN_ID!,
       runAttempt,

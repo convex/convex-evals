@@ -45,12 +45,12 @@ const environment = {
   CONVEX_AUTH_TOKEN: "test-token",
   GITHUB_ACTIONS: "true",
   GITHUB_REF: "refs/heads/main",
-  GITHUB_REPOSITORY: "get-convex/convex-evals",
+  GITHUB_REPOSITORY: "convex/convex-evals",
   GITHUB_SHA: commit,
   GITHUB_RUN_ID: "123",
   GITHUB_RUN_ATTEMPT: "1",
   GITHUB_WORKFLOW_REF:
-    "get-convex/convex-evals/.github/workflows/decision_evals.yml@refs/heads/main",
+    "convex/convex-evals/.github/workflows/decision_evals.yml@refs/heads/main",
 };
 const temporary: string[] = [];
 async function rejection(promise: Promise<unknown>): Promise<Error> {

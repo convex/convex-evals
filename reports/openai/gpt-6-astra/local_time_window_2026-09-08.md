@@ -8,8 +8,8 @@ The eval tests whether the model knows to accept a time argument for a reactive
 Convex query. Reading the wall clock inside the query can leave expired items
 visible because time passing does not rerun a subscription. The task deliberately
 does not prescribe an argument name. This intent is explicit in
-[issue #214](https://github.com/get-convex/convex-evals/issues/214) and
-[PR #219](https://github.com/get-convex/convex-evals/pull/219).
+[issue #214](https://github.com/convex/convex-evals/issues/214) and
+[PR #219](https://github.com/convex/convex-evals/pull/219).
 
 All three audited Astra answers read `Date.now()` inside `listActive` and declare
 no time argument. Those remain model failures against the intended measurement.
