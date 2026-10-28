@@ -125,12 +125,12 @@ Any write to the production deployment needs Mike's explicit go-ahead first. Tha
 
 Every push to `main` runs `release.yml`, which deploys the backend to production. Changes must reach `main` through a merged PR (see Pull Requests and Merging).
 
-### Schema Change Approval Gate
+### Schema Changes
 
-Before making any Convex schema change, show the user the proposed schema diff
-and explain its migration and deployment implications. Wait for the user's
-explicit approval before editing `evalScores/convex/schema.ts`, adding a schema
-migration, or deploying the schema change to any Convex deployment.
+Schema changes don't need Mike's approval before you make them. Edit
+`evalScores/convex/schema.ts` and add migrations as the work needs, and explain
+the schema diff and its migration impact in the PR. Merging still needs his
+go-ahead, because it deploys to production.
 
 When making schema or data changes to the Convex backend that require migrations:
 
