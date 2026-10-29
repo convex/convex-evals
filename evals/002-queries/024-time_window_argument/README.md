@@ -10,7 +10,7 @@ input. The model chooses the argument name. This measures implementation of the
 requested behavior; it does not measure spontaneous strategy selection.
 
 See [Convex's time-dependent query guidance](https://docs.convex.dev/understanding/best-practices#dont-use-datenow-in-queries)
-and the original design discussion in [issue #214](https://github.com/get-convex/convex-evals/issues/214).
+and the original design discussion in [issue #214](https://github.com/convex/convex-evals/issues/214).
 
 ## Grading
 
