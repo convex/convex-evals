@@ -121,15 +121,15 @@ describe("benchmark source filtering", () => {
     expect(events.at(-1)?.processingError).toBeDefined();
   });
   test.each([
-    "https://github.com/get-convex/convex-evals/blob/main/evals/task/answer/index.ts",
-    "https://raw.githubusercontent.com/get-convex/convex-evals/main/evals/task/grader.test.ts",
+    "https://github.com/convex/convex-evals/blob/main/evals/task/answer/index.ts",
+    "https://raw.githubusercontent.com/convex/convex-evals/main/evals/task/grader.test.ts",
     // The org was renamed from get-convex to convex; the old URLs still redirect, so both are blocked.
     "https://github.com/convex/convex-evals/blob/main/evals/task/answer/index.ts",
     "https://raw.githubusercontent.com/convex/convex-evals/main/evals/task/grader.test.ts",
     "https://github.com/a-fork/convex-evals",
-    "https://cdn.jsdelivr.net/gh/get-convex/convex-evals@main/file",
+    "https://cdn.jsdelivr.net/gh/convex/convex-evals@main/file",
     "https://stack.convex.dev/convex-evals?utm_source=test",
-    "https://r.jina.ai/https://github.com/get-convex/convex-evals",
+    "https://r.jina.ai/https://github.com/convex/convex-evals",
     "https://mirror.example/CONVEX%252dEVALS/answer",
   ])("rejects known source before dispatch: %s", async (url) => {
     const f = setup([]);
@@ -143,7 +143,7 @@ describe("benchmark source filtering", () => {
   test("rejects explicit benchmark searches without blocking ordinary documentation queries", async () => {
     const f = setup([]);
     await f.tools.execute(
-      f.call("web_search", { query: "get-convex/convex-evals grader.test.ts" }),
+      f.call("web_search", { query: "convex/convex-evals grader.test.ts" }),
     );
     expect(f.dispatched()).toBe(0);
     await f.tools.execute(
@@ -151,7 +151,7 @@ describe("benchmark source filtering", () => {
     );
     expect(f.dispatched()).toBe(1);
     expect(
-      webSourceUrlReason("https://github.com/get-convex/convex-js"),
+      webSourceUrlReason("https://github.com/convex/convex-js"),
     ).toBeUndefined();
     expect(
       webSourceUrlReason("https://github.com/convex/convex-js"),
@@ -164,7 +164,7 @@ describe("benchmark source filtering", () => {
   test("removes benchmark results and mirrored snippets before returning any content", async () => {
     const f = setup([
       {
-        url: "https://github.com/get-convex/convex-evals",
+        url: "https://github.com/convex/convex-evals",
         highlights: ["ANSWER"],
       },
       {
@@ -190,7 +190,7 @@ describe("benchmark source filtering", () => {
       { url: "https://stack.convex.dev/convex-evals", text: "ANSWER" },
       {
         url: "https://mirror.example/page",
-        text: "from get-convex/convex-evals ANSWER",
+        text: "from convex/convex-evals ANSWER",
       },
       {
         url: "https://mirror.example/page",

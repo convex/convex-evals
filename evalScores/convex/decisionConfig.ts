@@ -22,7 +22,7 @@ export const MAX_DECISION_OUTPUT_TOKENS = 8_192;
 // and this backend are deployed separately. Drop get-convex once both are out.
 export const DECISION_REPOSITORIES = [
   "convex/convex-evals",
-  "get-convex/convex-evals",
+  "convex/convex-evals",
 ];
 export const DECISION_WORKFLOW_REFS = DECISION_REPOSITORIES.flatMap((repo) => [
   `${repo}/.github/workflows/decision_evals.yml@refs/heads/main`,
