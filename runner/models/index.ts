@@ -30,6 +30,7 @@ export function resolveModelDefaults(name: string): ResolvedModel {
 
 export const ALL_MODELS: string[] = [
   "anthropic/claude-sonnet-5.5",
+  "anthropic/claude-opus-5.5",
   "anthropic/claude-fable-5.2",
   "anthropic/claude-haiku-5.5",
   "openai/gpt-6-astra",

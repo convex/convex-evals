@@ -31,6 +31,7 @@ describe("ALL_MODELS", () => {
 
   it("contains the current curated models", () => {
     expect(ALL_MODELS).toContain("anthropic/claude-sonnet-5.5");
+    expect(ALL_MODELS).toContain("anthropic/claude-opus-5.5");
     expect(ALL_MODELS).toContain("anthropic/claude-fable-5.2");
     expect(ALL_MODELS).toContain("anthropic/claude-haiku-5.5");
     expect(ALL_MODELS).toContain("openai/gpt-6-astra");
