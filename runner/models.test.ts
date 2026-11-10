@@ -31,26 +31,16 @@ describe("ALL_MODELS", () => {
 
   it("contains the current curated models", () => {
     expect(ALL_MODELS).toContain("anthropic/claude-sonnet-5.5");
-    expect(ALL_MODELS).toContain("anthropic/claude-sonnet-5");
-    expect(ALL_MODELS).toContain("anthropic/claude-opus-5");
-    expect(ALL_MODELS).toContain("anthropic/claude-opus-4.8");
-    expect(ALL_MODELS).toContain("anthropic/claude-fable-5");
     expect(ALL_MODELS).toContain("anthropic/claude-fable-5.2");
     expect(ALL_MODELS).toContain("anthropic/claude-haiku-5.5");
-    expect(ALL_MODELS).toContain("openai/gpt-5.5");
-    expect(ALL_MODELS).toContain("openai/gpt-5.6-sol");
-    expect(ALL_MODELS).toContain("openai/gpt-5.6-terra");
-    expect(ALL_MODELS).toContain("openai/gpt-5.6-luna");
     expect(ALL_MODELS).toContain("openai/gpt-6-astra");
     expect(ALL_MODELS).toContain("openai/gpt-6.1-sol");
     expect(ALL_MODELS).toContain("google/gemini-4-argon");
     expect(ALL_MODELS).toContain("deepseek/deepseek-v4-pro");
     expect(ALL_MODELS).toContain("z-ai/glm-5.3-flash");
-    expect(ALL_MODELS).toContain("moonshotai/kimi-k3");
     expect(ALL_MODELS).toContain("moonshotai/kimi-k3.1-pro");
     expect(ALL_MODELS).toContain("poolside/laguna-s-2.1");
     expect(ALL_MODELS).toContain("x-ai/grok-4.6");
-    expect(ALL_MODELS).toContain("x-ai/grok-4.5");
     expect(ALL_MODELS).toContain("meta/muse-wonder");
     expect(ALL_MODELS).toContain("meta/muse-spark-1.3");
   });
