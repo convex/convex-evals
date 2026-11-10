@@ -52,7 +52,7 @@ describe("MODEL_NAMES", () => {
   });
 
   it("contains a known model", () => {
-    expect(MODEL_NAMES.has("openai/gpt-5.5")).toBe(true);
+    expect(MODEL_NAMES.has("openai/gpt-6.1-sol")).toBe(true);
   });
 
   it("returns false for non-existent model", () => {
