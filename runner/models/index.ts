@@ -35,6 +35,7 @@ export const ALL_MODELS: string[] = [
   "anthropic/claude-haiku-5.5",
   "openai/gpt-6-astra",
   "openai/gpt-6.1-sol",
+  "google/gemini-4-carbon",
   "google/gemini-4-argon",
   "deepseek/deepseek-v4-pro",
   "z-ai/glm-5.3-flash",
