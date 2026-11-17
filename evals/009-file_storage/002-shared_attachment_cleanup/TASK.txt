@@ -1,0 +1,32 @@
+Build the backend for chat messages with file attachments. The browser uploads each file straight to Convex file storage (via `generateUploadUrl` and a POST to the returned URL) before sending the message. Forwarding a message reuses the original stored files instead of copying them, so one stored file can be attached to several messages.
+
+Write this schema to `convex/schema.ts`:
+```ts
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  messages: defineTable({
+    body: v.string(),
+  }),
+  attachments: defineTable({
+    messageId: v.id("messages"),
+    storageId: v.id("_storage"),
+    fileName: v.string(),
+  })
+    .index("by_messageId", ["messageId"])
+    .index("by_storageId", ["storageId"]),
+});
+```
+
+Create these mutations in `convex/index.ts`:
+
+1. `generateUploadUrl`: takes no arguments and returns an upload URL as a string.
+
+2. `sendMessage`: takes `{ body: string, files: Array<{ storageId: Id<"_storage">, fileName: string }> }` (at most 10 files), inserts the message and one attachment per file, and returns the new `Id<"messages">`.
+
+3. `forwardMessage`: takes `{ messageId: Id<"messages"> }`, creates a new message with the same body and a new attachment row for each of the original's attachments, pointing at the same stored files, and returns the new `Id<"messages">`. Throws an error if the message does not exist.
+
+4. `deleteMessage`: takes `{ messageId: Id<"messages"> }` and deletes the message and its attachments. Before it returns, every stored file that is no longer attached to any message must be deleted from storage; a file still attached to another message must be kept. Other stored files are not touched. Throws an error if the message does not exist.
+
+Only these four mutations may be callable by clients, so make any helper functions internal.

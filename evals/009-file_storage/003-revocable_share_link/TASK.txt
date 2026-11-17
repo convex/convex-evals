@@ -1,0 +1,31 @@
+Build revocable share links for files in Convex file storage.
+
+A share link is `<deployment site URL>/share?token=<token>`, and opening it downloads the file. A link can be revoked at any time, and revocation must cut off access through that link immediately, including for anyone who has already opened it. A file can have several share links, and revoking one does not affect the others. Revoking a link never deletes the file. Authentication is out of scope: anyone may call these functions.
+
+Write this schema to `convex/schema.ts`:
+```ts
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  shareLinks: defineTable({
+    token: v.string(),
+    storageId: v.id("_storage"),
+    revoked: v.boolean(),
+  }).index("by_token", ["token"]),
+});
+```
+
+Create these mutations in `convex/index.ts`:
+
+1. `generateUploadUrl`: takes no arguments and returns an upload URL as a string. The browser POSTs a file to it with the file's `Content-Type` header.
+
+2. `createShareLink`: takes `{ storageId: Id<"_storage"> }`, creates a share link with a new random, unguessable token, and returns the token as a string. Throws an error if the file is not in storage.
+
+3. `revokeShareLink`: takes `{ token: string }` and revokes that link. Throws an error if no link has this token.
+
+In `convex/http.ts`, handle `GET /share`:
+- For a token of a link that has not been revoked and whose file is still in storage, respond with status 200, the file's contents as the body, and the file's content type as the `Content-Type` header
+- Respond with status 404 if the `token` query parameter is missing, matches no link, belongs to a revoked link, or its file is no longer in storage
+
+Only these three mutations may be callable by clients, so make any helper functions internal.

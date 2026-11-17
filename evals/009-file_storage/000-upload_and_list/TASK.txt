@@ -1,0 +1,36 @@
+Build the backend for a photo gallery where the browser uploads photos straight to Convex file storage.
+
+The client's upload flow is:
+1. Call `generateUploadUrl` to get an upload URL.
+2. POST the photo to that URL as the request body, with the photo's `Content-Type` header. The response is JSON `{ storageId }`.
+3. Call `savePhoto` with that `storageId` and a caption.
+
+Write this schema to `convex/schema.ts`:
+```ts
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  photos: defineTable({
+    storageId: v.id("_storage"),
+    caption: v.string(),
+  }),
+});
+```
+
+Create these functions in `convex/index.ts`:
+
+1. A mutation `generateUploadUrl` that takes no arguments and returns an upload URL as a string.
+
+2. A mutation `savePhoto` that takes `{ storageId: Id<"_storage">, caption: string }`, stores the photo, and returns its `Id<"photos">`.
+
+3. A query `listPhotos` that takes no arguments and returns the 20 most recently saved photos, newest first, as an array of objects with exactly these fields:
+   - `_id`: the photo's `Id<"photos">`
+   - `caption`: the caption
+   - `url`: a URL the browser can download the photo from
+   - `contentType`: the content type that Convex recorded for the uploaded file
+   - `size`: the size in bytes that Convex recorded for the uploaded file
+
+Every upload includes a `Content-Type` header, so a content type is always recorded.
+
+Only these three functions may be callable by clients, so make any helper functions internal.
