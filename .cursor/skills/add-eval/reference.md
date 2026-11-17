@@ -49,7 +49,8 @@ These upload real files the way a browser does and inspect storage through the l
 | `uploadFile` | `(uploadUrl, body, contentType?) => Promise<string>` | POST a file to an upload URL and return its storage ID. Leaving out `contentType` with a `Uint8Array` body sends no `Content-Type` header, so Convex records none; a string body still gets `text/plain;charset=UTF-8` from fetch. |
 | `generateAdminUploadUrl` | `(adminClient) => Promise<string>` | An upload URL minted with admin rights, for files the model's code didn't upload. |
 | `listStoredFiles` | `(adminClient) => Promise<StoredFile[]>` | Every stored file, newest first, with `_id`, `_creationTime`, `contentType`, `sha256`, `size` and `url`. |
-| `deleteAllStoredFiles` | `(adminClient) => Promise<number>` | Delete every stored file. Use in `beforeEach` to isolate storage tests. |
+| `deleteStoredFiles` | `(adminClient, storageIds) => Promise<void>` | Delete the given stored files, as the dashboard does. |
+| `deleteAllStoredFiles` | `(adminClient) => Promise<number>` | Delete every stored file, then check storage is empty. Use in `beforeEach` to isolate storage tests. |
 
 `listTable` can't read `_storage` ("System tables can only be accessed from db.system.query()"), so use `listStoredFiles` instead.
 

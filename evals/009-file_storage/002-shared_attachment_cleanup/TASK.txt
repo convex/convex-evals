@@ -23,7 +23,7 @@ Create these mutations in `convex/index.ts`:
 
 1. `generateUploadUrl`: takes no arguments and returns an upload URL as a string.
 
-2. `sendMessage`: takes `{ body: string, files: Array<{ storageId: Id<"_storage">, fileName: string }> }` (at most 10 files), inserts the message and one attachment per file, and returns the new `Id<"messages">`.
+2. `sendMessage`: takes `{ body: string, files: Array<{ storageId: Id<"_storage">, fileName: string }> }` (at most 10 files, each listed once), inserts the message and one attachment per file, and returns the new `Id<"messages">`.
 
 3. `forwardMessage`: takes `{ messageId: Id<"messages"> }`, creates a new message with the same body and a new attachment row for each of the original's attachments, pointing at the same stored files, and returns the new `Id<"messages">`. Throws an error if the message does not exist.
 

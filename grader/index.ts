@@ -397,15 +397,23 @@ export async function listStoredFiles(adminClient: any): Promise<StoredFile[]> {
   }
 }
 
+/** Delete the given stored files, as the dashboard does. */
+export async function deleteStoredFiles(
+  adminClient: any,
+  storageIds: string[],
+): Promise<void> {
+  await adminClient.mutation("_system/frontend/fileStorageV2:deleteFiles", {
+    storageIds,
+  });
+}
+
 /** Delete every stored file, so storage tests start from a known state. */
 export async function deleteAllStoredFiles(adminClient: any): Promise<number> {
   const files = await listStoredFiles(adminClient);
   for (let i = 0; i < files.length; i += 100) {
     const storageIds = files.slice(i, i + 100).map((file) => file._id);
     try {
-      await adminClient.mutation("_system/frontend/fileStorageV2:deleteFiles", {
-        storageIds,
-      });
+      await deleteStoredFiles(adminClient, storageIds);
     } catch {
       // One file removed since the listing fails the whole batch, so delete
       // this batch one at a time. The check below catches anything left.
@@ -416,6 +424,9 @@ export async function deleteAllStoredFiles(adminClient: any): Promise<number> {
       }
     }
   }
+  // Anything left means the backend didn't delete it. This is reported as
+  // infrastructure, so in the rare case a model's own scheduled work stores a
+  // file after the listing, the eval goes unscored rather than failed.
   const left = await listStoredFiles(adminClient);
   if (left.length > 0) {
     failGraderInfrastructure(

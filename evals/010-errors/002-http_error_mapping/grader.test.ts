@@ -69,7 +69,9 @@ test("compare schema", async ({ skip }) => {
 });
 
 test("compare function spec", async ({ skip }) => {
-  await compareFunctionSpec(skip, { ignoreReturns: true, publicOnly: true });
+  // placeOrder must be the only function, public or internal, so the route
+  // can only place orders through it (HTTP routes aren't in the spec).
+  await compareFunctionSpec(skip, { ignoreReturns: true });
 });
 
 // placeOrder is given in the task. These two tests check it was written as
@@ -135,6 +137,8 @@ test("malformed requests get 400 INVALID_REQUEST", async () => {
     [{ sku: 42, quantity: 1 }, false],
     [{ sku: "LAMP-1", quantity: "2" }, false],
     [{ sku: "LAMP-1" }, false],
+    [null, false],
+    [[], false],
   ];
   for (const [body, raw] of malformed) {
     const response = await post(body, raw);

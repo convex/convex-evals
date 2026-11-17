@@ -88,8 +88,10 @@ test(
 
     expect(final.source).toBe("orders.broken");
     expect(final.status).toBe("failed");
-    // Convex records the thrown error with its own prefix and stack trace.
+    // Convex records the thrown error with its own prefix and a stack trace
+    // through the worker, which made-up text wouldn't have.
     expect(final.error).toMatch(/^Uncaught Error: Cannot parse orders\.broken\b/);
+    expect(final.error).toMatch(/importWorker/);
   },
 );
 
@@ -120,6 +122,7 @@ test("a failed run can fail slowly too", { timeout: 20_000 }, async () => {
   expect(new Set(seen.slice(0, -1))).toEqual(new Set(["pending"]));
   expect(final.status).toBe("failed");
   expect(final.error).toMatch(/^Uncaught Error: Cannot parse slow:legacy\.broken\b/);
+  expect(final.error).toMatch(/importWorker/);
 });
 
 test("each import reports its own outcome", { timeout: 20_000 }, async () => {

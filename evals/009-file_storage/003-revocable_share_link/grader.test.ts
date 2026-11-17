@@ -153,6 +153,27 @@ test("tokens are distinct and are not the storage ID or link ID", async () => {
   }
 });
 
+test("tokens look random rather than sequential", async () => {
+  const storageId = await upload(PNG_BYTES, "image/png");
+  const tokens: string[] = [];
+  for (let i = 0; i < 5; i++) {
+    tokens.push(await createLink(storageId));
+  }
+
+  // A counter or timestamp, even padded to 16 characters, changes in only a
+  // few positions between links; random tokens differ almost everywhere.
+  for (let a = 0; a < tokens.length; a++) {
+    for (let b = a + 1; b < tokens.length; b++) {
+      const length = Math.min(tokens[a].length, tokens[b].length);
+      let differing = 0;
+      for (let i = 0; i < length; i++) {
+        if (tokens[a][i] !== tokens[b][i]) differing++;
+      }
+      expect(differing).toBeGreaterThanOrEqual(8);
+    }
+  }
+});
+
 test("a storage ID does not work as a token", async () => {
   const storageId = await upload(PNG_BYTES, "image/png");
   await createLink(storageId);

@@ -175,32 +175,35 @@ test(
   },
 );
 
-test("never returns more than limit products, even with many identical twins", async () => {
-  // Twelve lamps share one embedding, so they all tie at 1.0 and tie order is
-  // random: the source is often not among the first limit + 1 hits, so a
-  // search for limit + 1 still needs trimming to limit.
-  await addDocuments(
-    responseAdminClient,
-    "products",
-    Array.from({ length: 12 }, (_, i) => ({
-      name: `lamp-${i}`,
-      category: "lamps",
-      embedding: [0, 0, 1, 0],
-    })),
-  );
-  const lamps = (await listTable(responseAdminClient, "products")) as Doc<"products">[];
-  const source = lamps.find((p) => p.name === "lamp-0")!;
+test(
+  "never returns more than limit products, even with many identical twins",
+  { timeout: 30_000 },
+  async () => {
+    // Twelve lamps share one embedding and tie at 1.0. Ties come back in a
+    // fixed order, so with limit + 1 hits most lamps aren't among their own
+    // hits, and a search for limit + 1 still has to be trimmed to limit.
+    await addDocuments(
+      responseAdminClient,
+      "products",
+      Array.from({ length: 12 }, (_, i) => ({
+        name: `lamp-${i}`,
+        category: "lamps",
+        embedding: [0, 0, 1, 0],
+      })),
+    );
+    const lamps = (await listTable(responseAdminClient, "products")) as Doc<"products">[];
 
-  for (const limit of [1, 2, 3]) {
-    const results = await similar(source._id, limit);
-    expect(results).toHaveLength(limit);
-    expect(results.map((r) => r._id)).not.toContain(source._id);
-  }
-  const all = await similar(source._id, 20);
-  expect(all.map((r) => r.name).sort()).toEqual(
-    Array.from({ length: 11 }, (_, i) => `lamp-${i + 1}`).sort(),
-  );
-});
+    for (const lamp of lamps) {
+      const results = await similar(lamp._id, 1);
+      expect(results).toHaveLength(1);
+      expect(results[0]._id).not.toEqual(lamp._id);
+    }
+    const all = await similar(lamps[0]._id, 20);
+    expect(all.map((r) => r._id).sort()).toEqual(
+      lamps.slice(1).map((lamp) => lamp._id).sort(),
+    );
+  },
+);
 
 test("returns more than ten products when the limit allows", async () => {
   await addDocuments(

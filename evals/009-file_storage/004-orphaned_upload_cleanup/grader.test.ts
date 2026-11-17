@@ -6,6 +6,7 @@ import {
   compareSchema,
   deleteAllDocuments,
   deleteAllStoredFiles,
+  deleteStoredFiles,
   generateAdminUploadUrl,
   listStoredFiles,
   responseAdminClient,
@@ -133,11 +134,12 @@ test(
     const target = await upload("referenced by the newest document");
     const orphan = await upload("abandoned");
     const cutoff = await cutoffAfterCurrentFiles();
-    // 1,100 documents of about 20 KB each reference 20 files uploaded after
-    // the cutoff, then one more references the target. Reading every
-    // document (about 22 MB) goes past a transaction's read limit, and reading
-    // only the first thousand misses the target. Looking references up per
-    // candidate file only ever touches the target's one document.
+    // 1,100 documents of about 20 KB each reference 20 files that are then
+    // deleted (dangling references), and one more references the target.
+    // Reading every document (about 22 MB) goes past a transaction's read
+    // limit, and reading only the first thousand misses the target. Looking
+    // references up per stored file, in any order, only ever touches the
+    // target's one document.
     const popular = await uploadMany(
       Array.from({ length: 20 }, (_, i) => `popular-${i}`),
     );
@@ -153,15 +155,19 @@ test(
       );
     }
     await reference(target, "Newest");
+    await deleteStoredFiles(responseAdminClient, popular);
 
-    expect(await cleanup(cutoff)).toBe(1);
+    try {
+      expect(await cleanup(cutoff)).toBe(1);
 
-    const remaining = await stored();
-    for (const fileId of popular) {
-      expect(remaining.has(fileId)).toBe(true);
+      const remaining = await stored();
+      expect(remaining.has(target)).toBe(true);
+      expect(remaining.has(orphan)).toBe(false);
+    } finally {
+      // Clear the 22 MB here, under this test's timeout, rather than in the
+      // next test's beforeEach.
+      await deleteAllDocuments(responseAdminClient, ["documents"]);
     }
-    expect(remaining.has(target)).toBe(true);
-    expect(remaining.has(orphan)).toBe(false);
   },
 );
 
