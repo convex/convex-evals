@@ -91,4 +91,4 @@ than becoming model failures or passing results.
 Choosing a bounded preview does not prove that users can reach the whole
 collection or that bulk work eventually completes. Those stronger pagination
 and batching requirements are tracked separately in
-[issue #286](https://github.com/get-convex/convex-evals/issues/286).
+[issue #286](https://github.com/convex/convex-evals/issues/286).

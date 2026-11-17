@@ -348,7 +348,7 @@
       "questionIds": [
         "q022-1"
       ],
-      "sourceFingerprint": "a515106f88dca181101d353f2b1745b9f52edfabe8733ab2b92c435616f21f9c",
+      "sourceFingerprint": "17cd907e9bd8eec19defed17c944f97515e8df6ad65accb64322e1421a01522b",
       "bankSha256": "ed0e1fed8977df7622ee9e9f40696acde7ac33aabbd153e8818e9fe5b8fa48c2"
     },
     {
@@ -364,7 +364,7 @@
       "questionIds": [
         "q024-1"
       ],
-      "sourceFingerprint": "d850fce40de81659fa204516a9c03f61155d250474db6f8d66c42910bf2dae50",
+      "sourceFingerprint": "8f66ac6ae34173eafb470879e5a54272d78ddd57c1f331df3d61d1dd33a0b100",
       "bankSha256": "67b0943ff8da322520969a00106e01cb0a63688491f0a76ba4c7761a4c0b0274"
     },
     {
