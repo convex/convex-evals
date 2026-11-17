@@ -40,6 +40,19 @@ relative paths like `import { responseClient, addDocuments } from "../../../grad
 | `deleteAllDocuments` | `(adminClient, tables[]) => Promise<Record<string, number>>` | Clear all documents from the given tables. Use for test cleanup. |
 | `pollUntil` | `(predicate, { timeoutMs, intervalMs }) => Promise<void>` | Poll until the predicate returns true, or throw after `timeoutMs`. Use instead of fixed sleeps (pattern 11). |
 
+### File Storage
+
+These upload real files the way a browser does and inspect storage through the local backend's dashboard system functions, so a grader doesn't depend on the model's own queries to see what is stored.
+
+| Helper | Signature | Description |
+|--------|-----------|-------------|
+| `uploadFile` | `(uploadUrl, body, contentType?) => Promise<string>` | POST a file to an upload URL and return its storage ID. Leaving out `contentType` sends no `Content-Type` header, so Convex records no content type. |
+| `generateAdminUploadUrl` | `(adminClient) => Promise<string>` | An upload URL minted with admin rights, for files the model's code didn't upload. |
+| `listStoredFiles` | `(adminClient) => Promise<StoredFile[]>` | Every stored file, newest first, with `_id`, `_creationTime`, `contentType`, `sha256`, `size` and `url`. |
+| `deleteAllStoredFiles` | `(adminClient) => Promise<number>` | Delete every stored file. Use in `beforeEach` to isolate storage tests. |
+
+`listTable` can't read `_storage` ("System tables can only be accessed from db.system.query()"), so use `listStoredFiles` instead.
+
 ### Output Files
 
 | Helper | Signature | Description |
