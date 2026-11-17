@@ -42,3 +42,5 @@ Create a public action `checkout` in `convex/index.ts` that takes `{ cartId: Id<
 The same cart can be checked out from two devices at once. Only one checkout may place the order; the others fail with `CART_ALREADY_ORDERED`.
 
 Every product in a cart exists, and a cart lists each product at most once. Only `checkout` may be callable by clients, so make any helper functions internal.
+
+If you read the payload of a caught error, narrow it first (a type assertion is fine): it is typed `any`, and this project's lint rules reject reading fields of an `any` value.

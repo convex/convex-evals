@@ -1,7 +1,8 @@
-Expose order placement over HTTP for partner systems, reusing the same order logic the app calls.
+Expose order placement over HTTP for partner systems, reusing the mutation the app already calls.
 
-Write this schema to `convex/schema.ts`:
+The app already has this schema and mutation. Write them to `convex/schema.ts` and `convex/orders.ts` exactly as given, and do not change them:
 ```ts
+// convex/schema.ts
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
@@ -17,18 +18,43 @@ export default defineSchema({
 });
 ```
 
-In `convex/index.ts`, create a public mutation `placeOrder` that takes `{ sku: string, quantity: number }`. On success it decrements the product's `stock` by `quantity`, inserts an order, and returns the order's ID. It fails, checking in this order, with an error carrying one of these structured payloads, which app clients read from the error object rather than its message:
-- `quantity` is not a whole number of at least 1: `{ code: "INVALID_QUANTITY" }`
-- no product has this `sku`: `{ code: "PRODUCT_NOT_FOUND", sku }`
-- the product's `stock` is less than `quantity`: `{ code: "OUT_OF_STOCK", available }`, where `available` is the product's current stock
+```ts
+// convex/orders.ts
+import { ConvexError, v } from "convex/values";
+import { mutation } from "./_generated/server";
 
-A failed call changes nothing.
+export const placeOrder = mutation({
+  args: { sku: v.string(), quantity: v.number() },
+  handler: async (ctx, args) => {
+    if (!Number.isInteger(args.quantity) || args.quantity < 1) {
+      throw new ConvexError({ code: "INVALID_QUANTITY" });
+    }
+    const product = await ctx.db
+      .query("products")
+      .withIndex("by_sku", (q) => q.eq("sku", args.sku))
+      .unique();
+    if (product === null) {
+      throw new ConvexError({ code: "PRODUCT_NOT_FOUND", sku: args.sku });
+    }
+    if (product.stock < args.quantity) {
+      throw new ConvexError({ code: "OUT_OF_STOCK", available: product.stock });
+    }
+    await ctx.db.patch("products", product._id, {
+      stock: product.stock - args.quantity,
+    });
+    return await ctx.db.insert("orders", {
+      sku: args.sku,
+      quantity: args.quantity,
+    });
+  },
+});
+```
 
-In `convex/http.ts`, handle `POST /orders`. The request body is JSON `{ "sku": string, "quantity": number }`. Place the order by calling the `placeOrder` mutation itself with `ctx.runMutation`, translate the errors it throws, and respond with a JSON body:
+In `convex/http.ts`, handle `POST /orders`. The request body is JSON `{ "sku": string, "quantity": number }`. Place the order by calling `placeOrder` with `ctx.runMutation`, and respond with a JSON body:
 - Success: status 201 with `{ "orderId": <the new order's ID> }`
-- The body is not valid JSON, `sku` is not a string, or `quantity` is not a number: status 400 with `{ "error": { "code": "INVALID_REQUEST" } }`, without placing an order
-- `INVALID_QUANTITY`: status 400 with `{ "error": { "code": "INVALID_QUANTITY" } }`
-- `PRODUCT_NOT_FOUND`: status 404 with `{ "error": { "code": "PRODUCT_NOT_FOUND", "sku": <the sku> } }`
-- `OUT_OF_STOCK`: status 409 with `{ "error": { "code": "OUT_OF_STOCK", "available": <current stock> } }`
+- The body is not valid JSON, `sku` is not a string, or `quantity` is not a number: status 400 with `{ "error": { "code": "INVALID_REQUEST" } }`, without calling `placeOrder`
+- When `placeOrder` fails, respond with its error payload as `error`, with status 400 for `INVALID_QUANTITY`, 404 for `PRODUCT_NOT_FOUND` and 409 for `OUT_OF_STOCK`. For example, a request for more than the 3 in stock gets status 409 with `{ "error": { "code": "OUT_OF_STOCK", "available": 3 } }`.
 
-Every response has the header `Content-Type: application/json`. `placeOrder` is the only function clients may call, so make any helper functions internal.
+Every response has the header `Content-Type: application/json`. Don't add any other public functions.
+
+The `data` of a caught `ConvexError` is typed `any`, and this project's lint rules reject reading fields of an `any` value, so narrow it (a type assertion is fine) before reading its fields.

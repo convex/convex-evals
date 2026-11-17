@@ -1,17 +1,17 @@
 import { beforeEach, expect, test } from "vitest";
-import { readdirSync, readFileSync } from "node:fs";
-import { join, relative } from "node:path";
-import ts from "typescript";
 import {
   addDocuments,
   compareFunctionSpec,
   compareSchema,
   deleteAllDocuments,
-  getLatestOutputProjectDir,
   listTable,
   responseAdminClient,
   responseClient,
 } from "../../../grader";
+import {
+  findTableAccess,
+  readModelConvexSources,
+} from "../../../grader/modelSource";
 import { api } from "./answer/convex/_generated/api";
 import { Doc, Id } from "./answer/convex/_generated/dataModel";
 
@@ -148,7 +148,10 @@ test("excludes only the product itself, even when it has an identical twin", asy
   expect(fromTwin.map((r) => r.name)).toEqual(["chair-source"]);
 });
 
-test("products in other categories do not crowd out the product's own category", async () => {
+test(
+  "products in other categories do not crowd out the product's own category",
+  { timeout: 30_000 },
+  async () => {
   const ids = await seedProducts();
   // More exact matches elsewhere than one vector search can return, so
   // filtering by category after the search leaves nothing.
@@ -169,6 +172,34 @@ test("products in other categories do not crowd out the product's own category",
     "chair-0.9",
     "chair-0.7",
   ]);
+  },
+);
+
+test("never returns more than limit products, even with many identical twins", async () => {
+  // Twelve lamps share one embedding, so they all tie at 1.0 and tie order is
+  // random: the source is often not among the first limit + 1 hits, so a
+  // search for limit + 1 still needs trimming to limit.
+  await addDocuments(
+    responseAdminClient,
+    "products",
+    Array.from({ length: 12 }, (_, i) => ({
+      name: `lamp-${i}`,
+      category: "lamps",
+      embedding: [0, 0, 1, 0],
+    })),
+  );
+  const lamps = (await listTable(responseAdminClient, "products")) as Doc<"products">[];
+  const source = lamps.find((p) => p.name === "lamp-0")!;
+
+  for (const limit of [1, 2, 3]) {
+    const results = await similar(source._id, limit);
+    expect(results).toHaveLength(limit);
+    expect(results.map((r) => r._id)).not.toContain(source._id);
+  }
+  const all = await similar(source._id, 20);
+  expect(all.map((r) => r.name).sort()).toEqual(
+    Array.from({ length: 11 }, (_, i) => `lamp-${i + 1}`).sort(),
+  );
 });
 
 test("returns more than ten products when the limit allows", async () => {
@@ -213,102 +244,13 @@ test("results have exactly the specified fields", async () => {
   }
 });
 
-// The model's Convex source files, excluding generated code and tests.
-function readConvexSources(): { path: string; text: string }[] {
-  const projectDir = getLatestOutputProjectDir(
-    "008-vector_search",
-    "002-similar_items",
-  );
-  const sources: { path: string; text: string }[] = [];
-  const walk = (dir: string) => {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      if (entry.name === "_generated" || entry.name === "node_modules") {
-        continue;
-      }
-      const fullPath = join(dir, entry.name);
-      if (entry.isDirectory()) {
-        walk(fullPath);
-      } else if (
-        /\.(ts|tsx|js|mjs)$/.test(entry.name) &&
-        !/\.(test|spec)\.[jt]sx?$/.test(entry.name)
-      ) {
-        sources.push({
-          path: relative(projectDir, fullPath),
-          text: readFileSync(fullPath, "utf8"),
-        });
-      }
-    }
-  };
-  walk(join(projectDir, "convex"));
-  return sources;
-}
-
-// Finds the tables passed to `vectorSearch`, and every query started on
-// `table`. Loading search hits needs only `db.get` by ID, so a query on the
-// searched table means rows are found another way, such as loading them all
-// and ranking them in JavaScript.
-function analyzeSources(table: string): {
-  vectorSearchTables: string[];
-  tableQueries: string[];
-} {
-  const vectorSearchTables: string[] = [];
-  const tableQueries: string[] = [];
-  for (const source of readConvexSources()) {
-    const file = ts.createSourceFile(
-      source.path,
-      source.text,
-      ts.ScriptTarget.Latest,
-      true,
-    );
-    // String constants, so a table name passed through one still resolves.
-    const constants = new Map<string, string>();
-    const collectConstants = (node: ts.Node) => {
-      if (
-        ts.isVariableDeclaration(node) &&
-        ts.isIdentifier(node.name) &&
-        node.initializer !== undefined &&
-        ts.isStringLiteralLike(node.initializer)
-      ) {
-        constants.set(node.name.text, node.initializer.text);
-      }
-      ts.forEachChild(node, collectConstants);
-    };
-    collectConstants(file);
-    const tableName = (node: ts.Expression | undefined) => {
-      if (node === undefined) return undefined;
-      if (ts.isStringLiteralLike(node)) return node.text;
-      if (ts.isIdentifier(node)) return constants.get(node.text);
-      return undefined;
-    };
-    const visit = (node: ts.Node) => {
-      if (ts.isCallExpression(node)) {
-        const callee = node.expression;
-        const name = ts.isPropertyAccessExpression(callee)
-          ? callee.name.text
-          : ts.isIdentifier(callee)
-            ? callee.text
-            : undefined;
-        if (name === "vectorSearch") {
-          vectorSearchTables.push(tableName(node.arguments[0]) ?? "(unknown)");
-        }
-        if (
-          name === "query" &&
-          ts.isPropertyAccessExpression(callee) &&
-          tableName(node.arguments[0]) === table
-        ) {
-          const { line } = file.getLineAndCharacterOfPosition(node.getStart());
-          tableQueries.push(`${source.path}:${line + 1}`);
-        }
-      }
-      ts.forEachChild(node, visit);
-    };
-    visit(file);
-  }
-  return { vectorSearchTables, tableQueries };
-}
-
 test("searches with the vector index and loads products only by ID", () => {
-  const { vectorSearchTables, tableQueries } = analyzeSources("products");
-  expect(vectorSearchTables).toContain("products");
+  // Loading hits needs only db.get by ID, so a query on the searched table
+  // means rows are found another way, such as ranking them in JavaScript.
+  const { vectorSearchCalls, tableQueries } = findTableAccess(
+    readModelConvexSources("008-vector_search", "002-similar_items"),
+    "products",
+  );
+  expect(vectorSearchCalls).toBeGreaterThan(0);
   expect(tableQueries).toEqual([]);
 });

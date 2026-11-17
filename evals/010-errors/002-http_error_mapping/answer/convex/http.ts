@@ -40,7 +40,7 @@ http.route({
     const { sku, quantity } = body as { sku: string; quantity: number };
 
     try {
-      const orderId = await ctx.runMutation(api.index.placeOrder, {
+      const orderId = await ctx.runMutation(api.orders.placeOrder, {
         sku,
         quantity,
       });
@@ -49,6 +49,7 @@ http.route({
       // ConvexError keeps its data across ctx.runMutation, so the code can be
       // mapped to a status. Anything else is unexpected and stays a 500.
       if (error instanceof ConvexError) {
+        // `data` is typed `any`; the assertion narrows it for the lint rules.
         const data = error.data as { code: string };
         const status = STATUS_BY_CODE[data.code];
         if (status !== undefined) {

@@ -148,6 +148,7 @@ test("tokens are distinct and are not the storage ID or link ID", async () => {
   for (const link of links) {
     expect(link.token).not.toBe(storageId);
     expect(link.token).not.toBe(link._id);
+    expect(link.token.length).toBeGreaterThanOrEqual(16);
     expect(link.revoked).toBe(false);
   }
 });

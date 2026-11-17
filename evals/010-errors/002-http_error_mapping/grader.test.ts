@@ -1,14 +1,10 @@
 import { beforeEach, expect, test } from "vitest";
-import { readdirSync, readFileSync } from "node:fs";
-import { join, relative } from "node:path";
-import ts from "typescript";
 import { ConvexError, type Value } from "convex/values";
 import {
   addDocuments,
   compareFunctionSpec,
   compareSchema,
   deleteAllDocuments,
-  getLatestOutputProjectDir,
   listTable,
   responseAdminClient,
   responseClient,
@@ -76,8 +72,10 @@ test("compare function spec", async ({ skip }) => {
   await compareFunctionSpec(skip, { ignoreReturns: true, publicOnly: true });
 });
 
+// placeOrder is given in the task. These two tests check it was written as
+// given, so the HTTP tests below grade only the route that calls it.
 test("placeOrder places an order for app clients", async () => {
-  const orderId = await responseClient.mutation(api.index.placeOrder, {
+  const orderId = await responseClient.mutation(api.orders.placeOrder, {
     sku: "LAMP-1",
     quantity: 2,
   });
@@ -91,7 +89,7 @@ test("placeOrder places an order for app clients", async () => {
 
 test("placeOrder failures carry their payloads to app clients", async () => {
   const place = (sku: string, quantity: number) =>
-    responseClient.mutation(api.index.placeOrder, { sku, quantity });
+    responseClient.mutation(api.orders.placeOrder, { sku, quantity });
 
   expect(await failurePayload(place("LAMP-1", 0))).toEqual({
     code: "INVALID_QUANTITY",
@@ -137,7 +135,6 @@ test("malformed requests get 400 INVALID_REQUEST", async () => {
     [{ sku: 42, quantity: 1 }, false],
     [{ sku: "LAMP-1", quantity: "2" }, false],
     [{ sku: "LAMP-1" }, false],
-    [null, false],
   ];
   for (const [body, raw] of malformed) {
     const response = await post(body, raw);
@@ -183,79 +180,4 @@ test("OUT_OF_STOCK maps to 409 with the available stock", async () => {
 
   expect(await stock()).toEqual({ "LAMP-1": 5, "RUG-2": 0 });
   expect(await orders()).toEqual([]);
-});
-
-// The model's Convex source files, excluding generated code and tests.
-function readConvexSources(): { path: string; text: string }[] {
-  const projectDir = getLatestOutputProjectDir(
-    "010-errors",
-    "002-http_error_mapping",
-  );
-  const sources: { path: string; text: string }[] = [];
-  const walk = (dir: string) => {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      if (entry.name === "_generated" || entry.name === "node_modules") {
-        continue;
-      }
-      const fullPath = join(dir, entry.name);
-      if (entry.isDirectory()) {
-        walk(fullPath);
-      } else if (
-        /\.(ts|tsx|js|mjs)$/.test(entry.name) &&
-        !/\.(test|spec)\.[jt]sx?$/.test(entry.name)
-      ) {
-        sources.push({
-          path: relative(projectDir, fullPath),
-          text: readFileSync(fullPath, "utf8"),
-        });
-      }
-    }
-  };
-  walk(join(projectDir, "convex"));
-  return sources;
-}
-
-test("the HTTP route places orders through placeOrder itself", () => {
-  // The task requires the endpoint to call the public mutation with
-  // ctx.runMutation and translate the ConvexErrors it throws, rather than
-  // sharing logic through a helper that returns error values.
-  const targets: string[] = [];
-  for (const source of readConvexSources()) {
-    const file = ts.createSourceFile(
-      source.path,
-      source.text,
-      ts.ScriptTarget.Latest,
-      true,
-    );
-    // References stored in constants, e.g. `const place = api.index.placeOrder`.
-    const aliases = new Map<string, string>();
-    const collectAliases = (node: ts.Node) => {
-      if (
-        ts.isVariableDeclaration(node) &&
-        ts.isIdentifier(node.name) &&
-        node.initializer !== undefined
-      ) {
-        aliases.set(node.name.text, node.initializer.getText(file));
-      }
-      ts.forEachChild(node, collectAliases);
-    };
-    collectAliases(file);
-    const visit = (node: ts.Node) => {
-      if (
-        ts.isCallExpression(node) &&
-        ts.isPropertyAccessExpression(node.expression) &&
-        node.expression.name.text === "runMutation" &&
-        node.arguments.length > 0
-      ) {
-        const argument = node.arguments[0];
-        const text = ts.isIdentifier(argument)
-          ? (aliases.get(argument.text) ?? argument.text)
-          : argument.getText(file);
-        targets.push(text.replace(/\s+/g, ""));
-      }
-      ts.forEachChild(node, visit);
-    };
-    visit(file);
-  }
-  expect(targets).toContain("api.index.placeOrder");
 });

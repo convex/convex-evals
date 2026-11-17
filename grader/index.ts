@@ -3,6 +3,7 @@ import { expect } from "vitest";
 import ts from "typescript";
 export { getLatestOutputProjectDir, readOutputFile } from "./outputDir.js";
 export { pollUntil } from "./pollUntil.js";
+import { failGraderInfrastructure } from "./infrastructure.js";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
@@ -317,7 +318,9 @@ export function containsCollectCall(
 /**
  * File storage helpers. Graders upload real files the way a browser does and
  * inspect storage through the dashboard's system functions, so checks don't
- * depend on the model's own queries to report what is stored.
+ * depend on the model's own queries to report what is stored. A failure in
+ * those system functions is the grader's problem, not the model's, so it is
+ * reported as an infrastructure failure.
  */
 export type StoredFile = {
   _id: string;
@@ -328,7 +331,12 @@ export type StoredFile = {
   url: string | null;
 };
 
-/** POST a file to an upload URL like a browser would and return its storage ID. */
+/**
+ * POST a file to an upload URL like a browser would and return its storage ID.
+ * Without `contentType` no Content-Type header is set for a `Uint8Array` body,
+ * so Convex records none; for a string body fetch still sends
+ * `text/plain;charset=UTF-8`.
+ */
 export async function uploadFile(
   uploadUrl: string,
   body: Uint8Array | string,
@@ -350,27 +358,42 @@ export async function uploadFile(
 
 /** An upload URL minted with admin rights, for files the model's code didn't upload. */
 export async function generateAdminUploadUrl(adminClient: any): Promise<string> {
-  return await adminClient.mutation(
-    "_system/frontend/fileStorageV2:generateUploadUrl",
-    {},
-  );
+  try {
+    return await adminClient.mutation(
+      "_system/frontend/fileStorageV2:generateUploadUrl",
+      {},
+    );
+  } catch (error) {
+    failGraderInfrastructure(
+      `Could not mint an upload URL: ${String(error)}`,
+      "file_storage",
+    );
+  }
 }
 
 /** Every file in the deployment's file storage, newest first. */
 export async function listStoredFiles(adminClient: any): Promise<StoredFile[]> {
   const files: StoredFile[] = [];
   let cursor: string | null = null;
-  for (;;) {
-    const result: {
-      page: StoredFile[];
-      isDone: boolean;
-      continueCursor: string;
-    } = await adminClient.query("_system/frontend/fileStorageV2:fileMetadata", {
-      paginationOpts: { numItems: 100, cursor },
-    });
-    files.push(...result.page);
-    if (result.isDone) return files;
-    cursor = result.continueCursor;
+  try {
+    for (;;) {
+      const result: {
+        page: StoredFile[];
+        isDone: boolean;
+        continueCursor: string;
+      } = await adminClient.query(
+        "_system/frontend/fileStorageV2:fileMetadata",
+        { paginationOpts: { numItems: 100, cursor } },
+      );
+      files.push(...result.page);
+      if (result.isDone) return files;
+      cursor = result.continueCursor;
+    }
+  } catch (error) {
+    failGraderInfrastructure(
+      `Could not list stored files: ${String(error)}`,
+      "file_storage",
+    );
   }
 }
 
@@ -385,13 +408,20 @@ export async function deleteAllStoredFiles(adminClient: any): Promise<number> {
       });
     } catch {
       // One file removed since the listing fails the whole batch, so delete
-      // this batch one at a time and skip any that are already gone.
+      // this batch one at a time. The check below catches anything left.
       for (const storageId of storageIds) {
         await adminClient
           .mutation("_system/frontend/fileStorageV2:deleteFile", { storageId })
           .catch(() => undefined);
       }
     }
+  }
+  const left = await listStoredFiles(adminClient);
+  if (left.length > 0) {
+    failGraderInfrastructure(
+      `Could not clear file storage: ${left.length} files remain`,
+      "file_storage",
+    );
   }
   return files.length;
 }

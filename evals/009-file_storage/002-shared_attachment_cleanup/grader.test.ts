@@ -154,6 +154,28 @@ test("a file shared with a forward survives until its last message is deleted", 
   expect(await attachments()).toEqual([]);
 });
 
+test("a file forwarded twice survives until all three messages are deleted", async () => {
+  const a = await upload("a");
+  const original = await send("Original", [{ storageId: a, fileName: "a.txt" }]);
+  const first = await responseClient.mutation(api.index.forwardMessage, {
+    messageId: original,
+  });
+  const second = await responseClient.mutation(api.index.forwardMessage, {
+    messageId: original,
+  });
+
+  // Two attachments still point at the file after this delete.
+  await responseClient.mutation(api.index.deleteMessage, { messageId: original });
+  expect(await storedIds()).toContain(a);
+
+  await responseClient.mutation(api.index.deleteMessage, { messageId: first });
+  expect(await storedIds()).toContain(a);
+
+  await responseClient.mutation(api.index.deleteMessage, { messageId: second });
+  expect(await storedIds()).not.toContain(a);
+  expect(await attachments()).toEqual([]);
+});
+
 test("deleting the forward first keeps the original's files", async () => {
   const a = await upload("a");
   const original = await send("Original", [{ storageId: a, fileName: "a.txt" }]);

@@ -135,17 +135,21 @@ test("an out-of-stock item fails the whole checkout but the failure is recorded"
 
 test("reports the first out-of-stock item in cart order", async () => {
   const { lamp, rug } = await seedProducts();
+  await addDocuments(responseAdminClient, "products", [{ name: "vase", stock: 2 }]);
+  const products = (await listTable(responseAdminClient, "products")) as Doc<"products">[];
+  const vase = products.find((p) => p.name === "vase")!._id;
+  // The rug line fits; the lamp and vase lines are both short.
   const cartId = await createCart([
     { productId: rug, quantity: 1 },
     { productId: lamp, quantity: 9 },
-    { productId: rug, quantity: 5 },
+    { productId: vase, quantity: 5 },
   ]);
 
   expect(await failurePayload(checkout(cartId))).toEqual({
     code: "OUT_OF_STOCK",
     productId: lamp,
   });
-  expect(await stock()).toEqual({ lamp: 5, rug: 1 });
+  expect(await stock()).toEqual({ lamp: 5, rug: 1, vase: 2 });
   expect(await failures()).toEqual([
     { cartId, code: "OUT_OF_STOCK", productId: lamp },
   ]);

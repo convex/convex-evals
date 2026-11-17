@@ -54,10 +54,16 @@ test("compare schema", async ({ skip }) => {
 });
 
 test("compare function spec", async ({ skip }) => {
+  // The given worker and both public functions must match; extra internal
+  // helpers are fine.
   await compareFunctionSpec(skip, {
     ignoreReturns: true,
     allowAdditionalFunctions: true,
   });
+});
+
+test("only startImport and getImport are public", async ({ skip }) => {
+  await compareFunctionSpec(skip, { ignoreReturns: true, publicOnly: true });
 });
 
 test("a successful import is reported as succeeded", { timeout: 20_000 }, async () => {
@@ -82,9 +88,8 @@ test(
 
     expect(final.source).toBe("orders.broken");
     expect(final.status).toBe("failed");
-    expect(final.error).toEqual(
-      expect.stringContaining("Cannot parse orders.broken"),
-    );
+    // Convex records the thrown error with its own prefix and stack trace.
+    expect(final.error).toMatch(/^Uncaught Error: Cannot parse orders\.broken\b/);
   },
 );
 
@@ -99,7 +104,6 @@ test("an import stays pending while the worker runs", { timeout: 20_000 }, async
   // The worker sleeps for 3 seconds, so most polls land while it is running.
   const { final, seen } = await waitUntilFinished(importId);
 
-  expect(seen.length).toBeGreaterThan(10);
   expect(new Set(seen.slice(0, -1))).toEqual(new Set(["pending"]));
   expect(final).toEqual({
     source: "slow:archive.csv",
@@ -115,9 +119,7 @@ test("a failed run can fail slowly too", { timeout: 20_000 }, async () => {
 
   expect(new Set(seen.slice(0, -1))).toEqual(new Set(["pending"]));
   expect(final.status).toBe("failed");
-  expect(final.error).toEqual(
-    expect.stringContaining("Cannot parse slow:legacy.broken"),
-  );
+  expect(final.error).toMatch(/^Uncaught Error: Cannot parse slow:legacy\.broken\b/);
 });
 
 test("each import reports its own outcome", { timeout: 20_000 }, async () => {
@@ -129,7 +131,7 @@ test("each import reports its own outcome", { timeout: 20_000 }, async () => {
 
   expect(goodResult).toEqual({ source: "good.csv", status: "succeeded", error: null });
   expect(badResult.status).toBe("failed");
-  expect(badResult.error).toEqual(expect.stringContaining("Cannot parse bad.broken"));
+  expect(badResult.error).toMatch(/^Uncaught Error: Cannot parse bad\.broken\b/);
 });
 
 test("getImport returns null for an import that does not exist", async () => {

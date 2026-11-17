@@ -128,28 +128,38 @@ test(
 
 test(
   "checks references even when documents far outnumber files",
-  { timeout: 60_000 },
+  { timeout: 120_000 },
   async () => {
-    const popular = await upload("popular");
     const target = await upload("referenced by the newest document");
     const orphan = await upload("abandoned");
-    // 1,100 documents share one file, then one more references the target,
-    // so reading only the first thousand documents misses the target.
-    await addDocuments(
-      responseAdminClient,
-      "documents",
-      Array.from({ length: 1100 }, (_, i) => ({
-        title: `Filler ${i}`,
-        fileId: popular,
-      })),
-    );
-    await reference(target, "Newest");
     const cutoff = await cutoffAfterCurrentFiles();
+    // 1,100 documents of about 20 KB each reference 20 files uploaded after
+    // the cutoff, then one more references the target. Reading every
+    // document (about 22 MB) goes past a transaction's read limit, and reading
+    // only the first thousand misses the target. Looking references up per
+    // candidate file only ever touches the target's one document.
+    const popular = await uploadMany(
+      Array.from({ length: 20 }, (_, i) => `popular-${i}`),
+    );
+    const padding = "x".repeat(20_000);
+    for (let batch = 0; batch < 11; batch++) {
+      await addDocuments(
+        responseAdminClient,
+        "documents",
+        Array.from({ length: 100 }, (_, i) => ({
+          title: `Filler ${batch * 100 + i} ${padding}`,
+          fileId: popular[(batch * 100 + i) % popular.length],
+        })),
+      );
+    }
+    await reference(target, "Newest");
 
     expect(await cleanup(cutoff)).toBe(1);
 
     const remaining = await stored();
-    expect(remaining.has(popular)).toBe(true);
+    for (const fileId of popular) {
+      expect(remaining.has(fileId)).toBe(true);
+    }
     expect(remaining.has(target)).toBe(true);
     expect(remaining.has(orphan)).toBe(false);
   },

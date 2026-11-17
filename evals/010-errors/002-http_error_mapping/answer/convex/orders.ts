@@ -2,10 +2,7 @@ import { ConvexError, v } from "convex/values";
 import { mutation } from "./_generated/server";
 
 export const placeOrder = mutation({
-  args: {
-    sku: v.string(),
-    quantity: v.number(),
-  },
+  args: { sku: v.string(), quantity: v.number() },
   handler: async (ctx, args) => {
     if (!Number.isInteger(args.quantity) || args.quantity < 1) {
       throw new ConvexError({ code: "INVALID_QUANTITY" });
@@ -20,7 +17,6 @@ export const placeOrder = mutation({
     if (product.stock < args.quantity) {
       throw new ConvexError({ code: "OUT_OF_STOCK", available: product.stock });
     }
-
     await ctx.db.patch("products", product._id, {
       stock: product.stock - args.quantity,
     });

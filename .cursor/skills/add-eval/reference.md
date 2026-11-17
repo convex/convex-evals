@@ -42,11 +42,11 @@ relative paths like `import { responseClient, addDocuments } from "../../../grad
 
 ### File Storage
 
-These upload real files the way a browser does and inspect storage through the local backend's dashboard system functions, so a grader doesn't depend on the model's own queries to see what is stored.
+These upload real files the way a browser does and inspect storage through the local backend's dashboard system functions, so a grader doesn't depend on the model's own queries to see what is stored. Failures in those system functions are reported as grader infrastructure failures, not model failures.
 
 | Helper | Signature | Description |
 |--------|-----------|-------------|
-| `uploadFile` | `(uploadUrl, body, contentType?) => Promise<string>` | POST a file to an upload URL and return its storage ID. Leaving out `contentType` sends no `Content-Type` header, so Convex records no content type. |
+| `uploadFile` | `(uploadUrl, body, contentType?) => Promise<string>` | POST a file to an upload URL and return its storage ID. Leaving out `contentType` with a `Uint8Array` body sends no `Content-Type` header, so Convex records none; a string body still gets `text/plain;charset=UTF-8` from fetch. |
 | `generateAdminUploadUrl` | `(adminClient) => Promise<string>` | An upload URL minted with admin rights, for files the model's code didn't upload. |
 | `listStoredFiles` | `(adminClient) => Promise<StoredFile[]>` | Every stored file, newest first, with `_id`, `_creationTime`, `contentType`, `sha256`, `size` and `url`. |
 | `deleteAllStoredFiles` | `(adminClient) => Promise<number>` | Delete every stored file. Use in `beforeEach` to isolate storage tests. |
