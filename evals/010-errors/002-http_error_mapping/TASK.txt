@@ -1,0 +1,34 @@
+Expose order placement over HTTP for partner systems, reusing the same order logic the app calls.
+
+Write this schema to `convex/schema.ts`:
+```ts
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  products: defineTable({
+    sku: v.string(),
+    stock: v.number(),
+  }).index("by_sku", ["sku"]),
+  orders: defineTable({
+    sku: v.string(),
+    quantity: v.number(),
+  }),
+});
+```
+
+In `convex/index.ts`, create a public mutation `placeOrder` that takes `{ sku: string, quantity: number }`. On success it decrements the product's `stock` by `quantity`, inserts an order, and returns the order's ID. It fails, checking in this order, with an error carrying one of these structured payloads, which app clients read from the error object rather than its message:
+- `quantity` is not a whole number of at least 1: `{ code: "INVALID_QUANTITY" }`
+- no product has this `sku`: `{ code: "PRODUCT_NOT_FOUND", sku }`
+- the product's `stock` is less than `quantity`: `{ code: "OUT_OF_STOCK", available }`, where `available` is the product's current stock
+
+A failed call changes nothing.
+
+In `convex/http.ts`, handle `POST /orders`. The request body is JSON `{ "sku": string, "quantity": number }`. Place the order by calling the `placeOrder` mutation itself with `ctx.runMutation`, translate the errors it throws, and respond with a JSON body:
+- Success: status 201 with `{ "orderId": <the new order's ID> }`
+- The body is not valid JSON, `sku` is not a string, or `quantity` is not a number: status 400 with `{ "error": { "code": "INVALID_REQUEST" } }`, without placing an order
+- `INVALID_QUANTITY`: status 400 with `{ "error": { "code": "INVALID_QUANTITY" } }`
+- `PRODUCT_NOT_FOUND`: status 404 with `{ "error": { "code": "PRODUCT_NOT_FOUND", "sku": <the sku> } }`
+- `OUT_OF_STOCK`: status 409 with `{ "error": { "code": "OUT_OF_STOCK", "available": <current stock> } }`
+
+Every response has the header `Content-Type: application/json`. `placeOrder` is the only function clients may call, so make any helper functions internal.

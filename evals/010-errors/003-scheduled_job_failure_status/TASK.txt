@@ -1,0 +1,45 @@
+Build a backend for imports that run in the background and report whether each one succeeded or failed.
+
+The worker that performs an import already exists. Write it to `convex/importWorker.ts` exactly as given, and do not change it:
+```ts
+import { v } from "convex/values";
+import { internalAction } from "./_generated/server";
+
+export const runImport = internalAction({
+  args: { source: v.string() },
+  handler: async (_ctx, args) => {
+    if (args.source.startsWith("slow:")) {
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+    }
+    if (args.source.endsWith(".broken")) {
+      throw new Error(`Cannot parse ${args.source}`);
+    }
+    return null;
+  },
+});
+```
+
+Write this schema to `convex/schema.ts` exactly as given. Do not add tables or fields:
+```ts
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  imports: defineTable({
+    source: v.string(),
+    jobId: v.id("_scheduled_functions"),
+  }),
+});
+```
+
+Nothing else records an import's progress, so its status must come from Convex's own record of the scheduled run.
+
+Create these functions in `convex/index.ts`:
+
+1. A mutation `startImport` that takes `{ source: string }`, schedules `runImport` with `{ source }` to run immediately, stores the import with the scheduled run's ID in `jobId`, and returns the import's `Id<"imports">`. Give its handler the explicit return type `Promise<Id<"imports">>`.
+
+2. A query `getImport` that takes `{ importId: Id<"imports"> }` and returns `{ source, status, error }`, or `null` if the import does not exist:
+   - `status` is `"pending"` until the run finishes, including while it is running, and then `"succeeded"` or `"failed"`
+   - `error` is the error message Convex recorded for a failed run, and `null` otherwise
+
+Only `startImport` and `getImport` may be callable by clients.

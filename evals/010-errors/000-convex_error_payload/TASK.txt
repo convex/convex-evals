@@ -1,0 +1,33 @@
+Build the backend for reserving event tickets.
+
+The app shows a different message for each kind of failure, so every failure must reach the client as an error that carries the exact structured payload listed below, with no other fields. The client reads the payload from the error object itself; it must not have to parse it out of the error message.
+
+Write this schema to `convex/schema.ts`:
+```ts
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  events: defineTable({
+    name: v.string(),
+    ticketsRemaining: v.number(),
+  }),
+  reservations: defineTable({
+    eventId: v.id("events"),
+    quantity: v.number(),
+  }),
+});
+```
+
+Create these functions in `convex/index.ts`:
+
+1. A mutation `reserveTickets` that takes `{ eventId: Id<"events">, quantity: number }`. On success it decrements the event's `ticketsRemaining` by `quantity`, inserts a reservation, and returns the reservation's ID. It fails, checking in this order, with these payloads:
+   - `quantity` is not a whole number from 1 to 10: `{ code: "INVALID_QUANTITY", min: 1, max: 10 }`
+   - the event does not exist: `{ code: "EVENT_NOT_FOUND", eventId }`
+   - fewer than `quantity` tickets remain: `{ code: "NOT_ENOUGH_TICKETS", ticketsRemaining }`, where `ticketsRemaining` is the event's current count
+
+   A failed call changes nothing.
+
+2. A query `getEvent` that takes `{ eventId: Id<"events"> }` and returns `{ name, ticketsRemaining }` for the event. If the event does not exist, it fails with the payload `{ code: "EVENT_NOT_FOUND", eventId }`.
+
+Only these two functions may be callable by clients, so make any helper functions internal.

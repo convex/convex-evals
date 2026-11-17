@@ -1,0 +1,44 @@
+Build checkout for an online shop. Checkout is a public action because a payment step will be added to it later; that step is out of scope here.
+
+Write this schema to `convex/schema.ts`:
+```ts
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  products: defineTable({
+    name: v.string(),
+    stock: v.number(),
+  }),
+  carts: defineTable({
+    status: v.union(v.literal("open"), v.literal("ordered")),
+    items: v.array(
+      v.object({
+        productId: v.id("products"),
+        quantity: v.number(),
+      }),
+    ),
+  }),
+  orders: defineTable({
+    cartId: v.id("carts"),
+  }),
+  checkoutFailures: defineTable({
+    cartId: v.id("carts"),
+    code: v.string(),
+    productId: v.optional(v.id("products")),
+  }),
+});
+```
+
+Create a public action `checkout` in `convex/index.ts` that takes `{ cartId: Id<"carts"> }` and places the order:
+
+- On success, it decrements each cart item's product `stock` by the item's `quantity`, sets the cart's `status` to `"ordered"`, inserts an order for the cart, and returns the order's ID. These changes must happen atomically.
+- It fails, checking in this order, with an error that reaches the client carrying one of these structured payloads (the client reads the payload from the error object, not from its message):
+  - the cart does not exist: `{ code: "CART_NOT_FOUND" }`
+  - the cart's `status` is already `"ordered"`: `{ code: "CART_ALREADY_ORDERED" }`
+  - an item's product has less stock than the item's quantity: `{ code: "OUT_OF_STOCK", productId }` for the first such item, in cart order
+- A failed checkout must not change any stock, cart, or order. Each failed checkout must record one `checkoutFailures` row with the cart's ID, the failure code, and, for `OUT_OF_STOCK`, the product's ID. Failure rows are kept for support staff, so they must persist even though the checkout failed. This includes `CART_NOT_FOUND`, which records the cart ID the caller passed.
+
+The same cart can be checked out from two devices at once. Only one checkout may place the order; the others fail with `CART_ALREADY_ORDERED`.
+
+Every product in a cart exists, and a cart lists each product at most once. Only `checkout` may be callable by clients, so make any helper functions internal.
