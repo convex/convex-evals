@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "codingEvalCount": 112,
+  "codingEvalCount": 125,
   "banks": [
     {
       "sourceEval": "000-fundamentals/000-empty_functions",
@@ -1003,6 +1003,162 @@
         {
           "id": "gap",
           "reason": "The exact multi-session rule is represented by 018/q2. Its source-specific selection and concurrency implementation remain outside multiple choice coverage."
+        }
+      ]
+    },
+    {
+      "sourceEval": "008-vector_search/000-basic_vector_search",
+      "coverageLimits": [
+        "No decision question for this source yet; it joined the coding suite after the decision bank was reviewed."
+      ],
+      "decisions": [
+        {
+          "id": "gap",
+          "reason": "Added with the November 2026 vector search, file storage and Convex errors coding evals. No decision question has been authored or reviewed for it, so it is coding-only coverage until one is."
+        }
+      ]
+    },
+    {
+      "sourceEval": "008-vector_search/001-visibility_or_filter",
+      "coverageLimits": [
+        "No decision question for this source yet; it joined the coding suite after the decision bank was reviewed."
+      ],
+      "decisions": [
+        {
+          "id": "gap",
+          "reason": "Added with the November 2026 vector search, file storage and Convex errors coding evals. No decision question has been authored or reviewed for it, so it is coding-only coverage until one is."
+        }
+      ]
+    },
+    {
+      "sourceEval": "008-vector_search/002-similar_items",
+      "coverageLimits": [
+        "No decision question for this source yet; it joined the coding suite after the decision bank was reviewed."
+      ],
+      "decisions": [
+        {
+          "id": "gap",
+          "reason": "Added with the November 2026 vector search, file storage and Convex errors coding evals. No decision question has been authored or reviewed for it, so it is coding-only coverage until one is."
+        }
+      ]
+    },
+    {
+      "sourceEval": "008-vector_search/003-chunked_document_search",
+      "coverageLimits": [
+        "No decision question for this source yet; it joined the coding suite after the decision bank was reviewed."
+      ],
+      "decisions": [
+        {
+          "id": "gap",
+          "reason": "Added with the November 2026 vector search, file storage and Convex errors coding evals. No decision question has been authored or reviewed for it, so it is coding-only coverage until one is."
+        }
+      ]
+    },
+    {
+      "sourceEval": "009-file_storage/000-upload_and_list",
+      "coverageLimits": [
+        "No decision question for this source yet; it joined the coding suite after the decision bank was reviewed."
+      ],
+      "decisions": [
+        {
+          "id": "gap",
+          "reason": "Added with the November 2026 vector search, file storage and Convex errors coding evals. No decision question has been authored or reviewed for it, so it is coding-only coverage until one is."
+        }
+      ]
+    },
+    {
+      "sourceEval": "009-file_storage/001-validate_upload",
+      "coverageLimits": [
+        "No decision question for this source yet; it joined the coding suite after the decision bank was reviewed."
+      ],
+      "decisions": [
+        {
+          "id": "gap",
+          "reason": "Added with the November 2026 vector search, file storage and Convex errors coding evals. No decision question has been authored or reviewed for it, so it is coding-only coverage until one is."
+        }
+      ]
+    },
+    {
+      "sourceEval": "009-file_storage/002-shared_attachment_cleanup",
+      "coverageLimits": [
+        "No decision question for this source yet; it joined the coding suite after the decision bank was reviewed."
+      ],
+      "decisions": [
+        {
+          "id": "gap",
+          "reason": "Added with the November 2026 vector search, file storage and Convex errors coding evals. No decision question has been authored or reviewed for it, so it is coding-only coverage until one is."
+        }
+      ]
+    },
+    {
+      "sourceEval": "009-file_storage/003-revocable_share_link",
+      "coverageLimits": [
+        "No decision question for this source yet; it joined the coding suite after the decision bank was reviewed."
+      ],
+      "decisions": [
+        {
+          "id": "gap",
+          "reason": "Added with the November 2026 vector search, file storage and Convex errors coding evals. No decision question has been authored or reviewed for it, so it is coding-only coverage until one is."
+        }
+      ]
+    },
+    {
+      "sourceEval": "009-file_storage/004-orphaned_upload_cleanup",
+      "coverageLimits": [
+        "No decision question for this source yet; it joined the coding suite after the decision bank was reviewed."
+      ],
+      "decisions": [
+        {
+          "id": "gap",
+          "reason": "Added with the November 2026 vector search, file storage and Convex errors coding evals. No decision question has been authored or reviewed for it, so it is coding-only coverage until one is."
+        }
+      ]
+    },
+    {
+      "sourceEval": "010-errors/000-convex_error_payload",
+      "coverageLimits": [
+        "No decision question for this source yet; it joined the coding suite after the decision bank was reviewed."
+      ],
+      "decisions": [
+        {
+          "id": "gap",
+          "reason": "Added with the November 2026 vector search, file storage and Convex errors coding evals. No decision question has been authored or reviewed for it, so it is coding-only coverage until one is."
+        }
+      ]
+    },
+    {
+      "sourceEval": "010-errors/001-record_failed_checkout",
+      "coverageLimits": [
+        "No decision question for this source yet; it joined the coding suite after the decision bank was reviewed."
+      ],
+      "decisions": [
+        {
+          "id": "gap",
+          "reason": "Added with the November 2026 vector search, file storage and Convex errors coding evals. No decision question has been authored or reviewed for it, so it is coding-only coverage until one is."
+        }
+      ]
+    },
+    {
+      "sourceEval": "010-errors/002-http_error_mapping",
+      "coverageLimits": [
+        "No decision question for this source yet; it joined the coding suite after the decision bank was reviewed."
+      ],
+      "decisions": [
+        {
+          "id": "gap",
+          "reason": "Added with the November 2026 vector search, file storage and Convex errors coding evals. No decision question has been authored or reviewed for it, so it is coding-only coverage until one is."
+        }
+      ]
+    },
+    {
+      "sourceEval": "010-errors/003-scheduled_job_failure_status",
+      "coverageLimits": [
+        "No decision question for this source yet; it joined the coding suite after the decision bank was reviewed."
+      ],
+      "decisions": [
+        {
+          "id": "gap",
+          "reason": "Added with the November 2026 vector search, file storage and Convex errors coding evals. No decision question has been authored or reviewed for it, so it is coding-only coverage until one is."
         }
       ]
     }
