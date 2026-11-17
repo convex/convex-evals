@@ -1,0 +1,38 @@
+Build a backend for a notes app with semantic search. A user's search covers every note they are allowed to see: all of their own notes, private or public, plus every other user's public notes.
+
+Note embeddings come from an external embedding model and have exactly 8 dimensions.
+
+Write this schema to `convex/schema.ts`, adding a vector index named `by_embedding` over the `embedding` field, with whatever filter fields your search needs:
+```ts
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  notes: defineTable({
+    ownerTokenIdentifier: v.string(),
+    visibility: v.union(v.literal("private"), v.literal("public")),
+    text: v.string(),
+    embedding: v.array(v.float64()),
+  }),
+});
+```
+
+Auth is already configured. Do not create `convex/auth.config.ts`.
+
+Create these functions in `convex/index.ts`:
+
+1. A public mutation `createNote` that:
+   - Takes arguments `{ text: string, visibility: "private" | "public", embedding: number[] }`
+   - Stores a note owned by the authenticated caller, with `ownerTokenIdentifier` set to the caller's `tokenIdentifier`
+   - Returns the new note's ID
+   - Throws an error if the caller is not authenticated
+
+2. A public action `searchNotes` that:
+   - Takes arguments `{ embedding: number[], limit: number }`. Callers always pass an integer `limit` between 1 and 50.
+   - Uses the vector index to find the `limit` notes visible to the authenticated caller that are most similar to `embedding`
+   - Returns an array of objects with exactly these fields: `{ _id: Id<"notes">, text: string, score: number }`, where `score` is the note's similarity score for this search, ordered from most to least similar
+   - Throws an error if the caller is not authenticated
+
+Most notes in the system are other users' private notes, so the search must still return the best `limit` visible notes when thousands of notes the caller cannot see are more similar to the query.
+
+Load the matching notes only by the IDs the search returns; don't query the `notes` table any other way. Only `createNote` and `searchNotes` may be callable by clients, so make any helper functions internal.

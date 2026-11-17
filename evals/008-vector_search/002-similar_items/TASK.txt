@@ -1,0 +1,29 @@
+Build a "similar products" feature for an online store.
+
+Write this schema to `convex/schema.ts`:
+```ts
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  products: defineTable({
+    name: v.string(),
+    category: v.string(),
+    embedding: v.array(v.float64()),
+  }).vectorIndex("by_embedding", {
+    vectorField: "embedding",
+    dimensions: 4,
+    filterFields: ["category"],
+  }),
+});
+```
+
+Create a public action `similarProducts` in `convex/index.ts` that:
+- Takes arguments `{ productId: Id<"products">, limit: number }`. Callers always pass an integer `limit` between 1 and 100.
+- Uses the vector index to find the other products in the same category as `productId` whose embeddings are most similar to that product's embedding
+- Returns an array of objects with exactly these fields: `{ _id: Id<"products">, name: string, score: number }`, where `score` is the product's similarity score, ordered from most to least similar
+- Never includes the product itself, but does include other products even when their embeddings are identical to it
+- Returns exactly `limit` products whenever the category has at least `limit` other products, and all of them otherwise
+- Returns an empty array if `productId` does not exist
+
+Load products only by ID; don't query the `products` table any other way. Only `similarProducts` may be callable by clients, so make any helper functions internal.
