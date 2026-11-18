@@ -3531,7 +3531,7 @@
   "promotionFreezeSha256": "6a92753f7cf4d84593357eadb1ccbfa53bf14fe3e805897dace33f242396878d",
   "promotionAcceptanceSha256": "ffb709cad97f04c66479c500822b278e64e5c3c6b652d16825463f4e2569abd0",
   "promotionOriginalCoverageSha256": "8b4115eb31ac2a2b5dc28cfcbca477993aa08b5c03918c1115c55eed48ccd5f8",
-  "promotionCoverageSha256": "1f186e9fe4ecd38cd8d1cde35db0720eeff6003aaad38664e17f166824d844a8",
+  "promotionCoverageSha256": "55a6d6c6ef0929f5ac17d2dbb250480564517ec30e0e1c9a7e52c938243c1567",
   "reviewContext": [
     "outputs/promotion-2026-09-23/coverage-summary.json",
     "outputs/full-bank-2026-09-23/final-checks.json",

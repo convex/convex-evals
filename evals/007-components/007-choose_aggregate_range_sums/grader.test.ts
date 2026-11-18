@@ -88,6 +88,13 @@ function analyze(): Analysis {
     "delete",
     "deleteIfExists",
   ]);
+  // DirectAggregate writes that take an entry's sumValue.
+  const sumValueWriteMethods = new Set([
+    "insert",
+    "insertIfDoesNotExist",
+    "replace",
+    "replaceOrInsert",
+  ]);
   const readMethods = new Set(["count", "indexOf", "indexOfDoc", "at", "sum"]);
   const scanMethods = new Set(["collect", "take", "filter", "paginate"]);
 
@@ -127,6 +134,95 @@ function analyze(): Analysis {
       }
       return current;
     };
+    // A sumValue that is a fixed number (`sumValue: 1`, `sumValue: () => 1`)
+    // counts rows instead of summing amounts.
+    const isFixedNumber = (expression: ts.Expression): boolean => {
+      let current = unwrap(expression);
+      if (ts.isArrowFunction(current) || ts.isFunctionExpression(current)) {
+        const body = current.body;
+        if (!ts.isBlock(body)) {
+          current = unwrap(body);
+        } else {
+          const only =
+            body.statements.length === 1 ? body.statements[0] : undefined;
+          if (
+            only === undefined ||
+            !ts.isReturnStatement(only) ||
+            only.expression === undefined
+          ) {
+            return false;
+          }
+          current = unwrap(only.expression);
+        }
+      }
+      return (
+        ts.isNumericLiteral(current) ||
+        (ts.isPrefixUnaryExpression(current) &&
+          ts.isNumericLiteral(current.operand))
+      );
+    };
+    const setsSumValue = (object: ts.ObjectLiteralExpression): boolean =>
+      object.properties.some((property) => {
+        if (
+          property.name === undefined ||
+          !ts.isIdentifier(property.name) ||
+          property.name.text !== "sumValue"
+        ) {
+          return false;
+        }
+        if (ts.isPropertyAssignment(property)) {
+          return !isFixedNumber(property.initializer);
+        }
+        if (ts.isMethodDeclaration(property) && property.body !== undefined) {
+          const only =
+            property.body.statements.length === 1
+              ? property.body.statements[0]
+              : undefined;
+          return !(
+            only !== undefined &&
+            ts.isReturnStatement(only) &&
+            only.expression !== undefined &&
+            isFixedNumber(only.expression)
+          );
+        }
+        return true;
+      });
+    // `const entry = { key, id, sumValue }` objects, by name, for writes that
+    // pass a variable instead of an inline object. A name declared twice in
+    // the file is ambiguous, so it's left out.
+    const constObjects = new Map<string, ts.ObjectLiteralExpression | null>();
+    const collectObjects = (node: ts.Node) => {
+      if (
+        ts.isVariableDeclaration(node) &&
+        ts.isIdentifier(node.name) &&
+        node.initializer !== undefined
+      ) {
+        const name = node.name.text;
+        const value = unwrap(node.initializer);
+        const isConst =
+          (ts.getCombinedNodeFlags(node) & ts.NodeFlags.Const) !== 0;
+        constObjects.set(
+          name,
+          constObjects.has(name) ||
+            !isConst ||
+            !ts.isObjectLiteralExpression(value)
+            ? null
+            : value,
+        );
+      }
+      ts.forEachChild(node, collectObjects);
+    };
+    collectObjects(sourceFile);
+    const objectArgument = (
+      argument: ts.Expression,
+    ): ts.ObjectLiteralExpression | undefined => {
+      const value = unwrap(argument);
+      if (ts.isObjectLiteralExpression(value)) return value;
+      if (ts.isIdentifier(value))
+        return constObjects.get(value.text) ?? undefined;
+      return undefined;
+    };
+
     const clientVars = new Set<string>();
     const collectVars = (node: ts.Node) => {
       if (
@@ -148,16 +244,9 @@ function analyze(): Analysis {
             constructsClient = true;
             clientVars.add(node.name.text);
             const options = initializer.arguments?.[1];
-            if (
-              options !== undefined &&
-              ts.isObjectLiteralExpression(options) &&
-              options.properties.some(
-                (property) =>
-                  property.name !== undefined &&
-                  ts.isIdentifier(property.name) &&
-                  property.name.text === "sumValue",
-              )
-            ) {
+            const optionsObject =
+              options === undefined ? undefined : objectArgument(options);
+            if (optionsObject !== undefined && setsSumValue(optionsObject)) {
               configuresSumValue = true;
             }
           }
@@ -207,22 +296,15 @@ function analyze(): Analysis {
         const receiver = node.expression.expression;
         if (ts.isIdentifier(receiver) && clientVars.has(receiver.text)) {
           if (writeMethods.has(name)) synchronizesWrites = true;
-          // DirectAggregate has no sumValue option in its constructor: each
-          // write passes `{ key, id, sumValue }` instead. Count that as
-          // configuring the sum, as the TableAggregate option is.
+          // DirectAggregate has no sumValue option in its constructor: the
+          // writes that add an entry pass `{ key, id, sumValue }` instead.
+          // Count that as configuring the sum, as the TableAggregate option
+          // is, unless the value is a fixed number (that counts rows).
           if (
-            writeMethods.has(name) &&
+            sumValueWriteMethods.has(name) &&
             node.arguments.some((argument) => {
-              const value = unwrap(argument);
-              return (
-                ts.isObjectLiteralExpression(value) &&
-                value.properties.some(
-                  (property) =>
-                    property.name !== undefined &&
-                    ts.isIdentifier(property.name) &&
-                    property.name.text === "sumValue",
-                )
-              );
+              const object = objectArgument(argument);
+              return object !== undefined && setsSumValue(object);
             })
           ) {
             configuresSumValue = true;

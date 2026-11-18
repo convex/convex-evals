@@ -2,6 +2,7 @@ import { expect, test, beforeEach } from "vitest";
 import {
   deleteAllDocuments,
   getSchema,
+  listTable,
   responseAdminClient,
   responseClient,
   readOutputFile,
@@ -49,6 +50,23 @@ test("getTicketCount returns the correct count after creating tickets", async ()
   );
 
   expect(count).toBe(3);
+});
+
+test("createTicket stores the ticket", async () => {
+  await responseClient.mutation(anyApi.index.createTicket, {
+    orgId: "org-1",
+    title: "Fix login bug",
+    status: "open",
+  });
+
+  const tickets = (await listTable(responseAdminClient, "tickets")) as {
+    orgId: string;
+    title: string;
+    status: string;
+  }[];
+  expect(
+    tickets.map(({ orgId, title, status }) => ({ orgId, title, status })),
+  ).toEqual([{ orgId: "org-1", title: "Fix login bug", status: "open" }]);
 });
 
 test("getTicketCount returns independent counts per org", async () => {

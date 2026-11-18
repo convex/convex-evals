@@ -28,8 +28,8 @@ Implement these functions in `convex/index.ts`:
 
 3. Create an action `fetchIfNeeded` that uses the query and mutation to:
    - Takes arguments:  `{ url: string }`
-   - Makes a fetch request to the URL, if the result is not already cached in fetchResults.
-   - If it isn't cached, write the JSON response to the fetchResults table
+   - Makes a fetch request to the URL, if the result is not already cached in fetchRequests.
+   - If it isn't cached, write the JSON response to the fetchRequests table
    - If the response status is not successful (not 2xx), throw an error and cache nothing
    - Has the handler return type of `Promise<Id<"fetchRequests">>`
    - Returns the newly created record ID

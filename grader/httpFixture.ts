@@ -20,8 +20,11 @@ export async function startHttpFixture(): Promise<HttpFixture> {
 
     response.setHeader("content-type", "application/json");
 
-    if (url.pathname === "/status/500") {
-      response.statusCode = 500;
+    // `/status/404`, `/status/500` and so on: a JSON body with that status,
+    // so only a status check tells the response apart from a good one.
+    const status = /^\/status\/([45]\d\d)$/.exec(url.pathname);
+    if (status !== null) {
+      response.statusCode = Number(status[1]);
       response.end(JSON.stringify({ error: "fixture failure" }));
       return;
     }

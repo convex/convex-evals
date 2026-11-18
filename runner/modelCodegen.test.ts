@@ -389,7 +389,9 @@ describe("renderPrompt", () => {
 
   it("includes Convex version requirement", () => {
     const prompt = renderPrompt("test");
-    expect(prompt).toContain("1.44.0");
+    expect(prompt).toContain(
+      '- Use Convex version "^1.50.0", unless the task description gives a Convex version: then use exactly what it says.',
+    );
   });
 
   it("always generates non-empty output", () => {

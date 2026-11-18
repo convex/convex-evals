@@ -356,7 +356,7 @@
       "questionIds": [
         "q023-1"
       ],
-      "sourceFingerprint": "65a0277c4ce05a107266ef0023e00b22e1093ee96b6f619df202a2da190a57bd",
+      "sourceFingerprint": "1ba0f86990cf94e07d1ed7a612a15fac1daa9c1412728ab16165ca5fb79ca512",
       "bankSha256": "f9eb8de546e5a9352cb10ba94425ad426dd66d9e0300e30757b0f6ecd8d16210"
     },
     {
@@ -452,7 +452,7 @@
       "questionIds": [
         "q1"
       ],
-      "sourceFingerprint": "c1e2b7a90ad20afaba09923c26bb0fdf7a5cf4533adac29b4333be9d9e1445c5",
+      "sourceFingerprint": "a2cfaff22ba12f7e87a41e0cfa763650750cb23856503671f1d4b4c6cc800a4a",
       "bankSha256": "bfcc62b52ad25305f611f674c821404bf4dcf495adfd9aeb2c7432875b5b650b"
     },
     {
@@ -635,7 +635,7 @@
       "questionIds": [
         "q-weighted-time-config"
       ],
-      "sourceFingerprint": "64eb151f6f6abd34411d7d199e1d90b728f5c78162498f6bcba27f689e41ade5",
+      "sourceFingerprint": "c12c28b9467f449c81407d02cf7efdfc4413197804fd49eec642da9a40f23637",
       "bankSha256": "8a0dd8f124a72545bac3969d6c9f091ebfcf3c85696cb97be812b34e6c707095"
     },
     {
