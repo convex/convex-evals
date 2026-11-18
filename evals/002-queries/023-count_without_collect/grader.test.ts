@@ -63,17 +63,16 @@ test("createTicket stores every ticket", async () => {
   }
 
   const tickets = (await listTable(responseAdminClient, "tickets")) as {
-    orgId: string;
-    title: string;
-    status: string;
+    orgId?: unknown;
+    title?: unknown;
+    status?: unknown;
   }[];
-  const byTitle = (a: { title: string }, b: { title: string }) =>
-    a.title.localeCompare(b.title);
-  expect(
-    tickets
-      .map(({ orgId, title, status }) => ({ orgId, title, status }))
-      .sort(byTitle),
-  ).toEqual([...created].sort(byTitle));
+  const stored = tickets.map(({ orgId, title, status }) =>
+    JSON.stringify({ orgId, title, status }),
+  );
+  expect(stored.sort()).toEqual(
+    created.map((ticket) => JSON.stringify(ticket)).sort(),
+  );
 });
 
 test("getTicketCount returns independent counts per org", async () => {

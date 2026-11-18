@@ -88,13 +88,12 @@ function analyze(): Analysis {
     "delete",
     "deleteIfExists",
   ]);
-  // DirectAggregate writes that add an entry with its sumValue, and which
-  // argument that entry is: `insert(ctx, entry)`, `replace(ctx, old, entry)`.
-  const sumValueWriteMethods = new Map([
-    ["insert", 1],
-    ["insertIfDoesNotExist", 1],
-    ["replace", 2],
-    ["replaceOrInsert", 2],
+  // DirectAggregate writes that add an entry with its sumValue.
+  const sumValueWriteMethods = new Set([
+    "insert",
+    "insertIfDoesNotExist",
+    "replace",
+    "replaceOrInsert",
   ]);
   const readMethods = new Set(["count", "indexOf", "indexOfDoc", "at", "sum"]);
   const scanMethods = new Set(["collect", "take", "filter", "paginate"]);
@@ -198,11 +197,29 @@ function analyze(): Analysis {
     const carriesAmount = (expression: ts.Expression, depth = 0): boolean => {
       const value = unwrapAll(expression);
       if (mentionsAmount(value)) return true;
-      return (
-        ts.isIdentifier(value) &&
-        depth < 5 &&
-        declarationCarriesAmount(declarationOf(value), depth)
-      );
+      if (depth >= 5) return false;
+      if (ts.isIdentifier(value)) {
+        return declarationCarriesAmount(declarationOf(value), depth);
+      }
+      // `sumValue: weightOf(tx)` with a selector declared in this file.
+      if (ts.isCallExpression(value)) {
+        const callee = unwrapAll(value.expression);
+        const declaration = ts.isIdentifier(callee)
+          ? declarationOf(callee)
+          : undefined;
+        if (declaration === undefined) return false;
+        if (ts.isFunctionDeclaration(declaration)) {
+          return (
+            declaration.body !== undefined && mentionsAmount(declaration.body)
+          );
+        }
+        return (
+          ts.isVariableDeclaration(declaration) &&
+          declaration.initializer !== undefined &&
+          carriesAmount(declaration.initializer, depth + 1)
+        );
+      }
+      return false;
     };
     // A fixed number (`1`, `() => 1`, or a const holding one) counts rows
     // instead of summing amounts.
@@ -275,11 +292,26 @@ function analyze(): Analysis {
             isFixedNumber(declaration.initializer)
           );
         }
-        return (
-          (ts.isMethodDeclaration(property) ||
-            ts.isGetAccessorDeclaration(property)) &&
-          property.body !== undefined &&
-          (strict ? mentionsAmount(property.body) : true)
+        if (
+          !(
+            ts.isMethodDeclaration(property) ||
+            ts.isGetAccessorDeclaration(property)
+          ) ||
+          property.body === undefined
+        ) {
+          return false;
+        }
+        if (strict) return mentionsAmount(property.body);
+        // `sumValue() { return 1; }` counts rows, like `() => 1`.
+        const only =
+          property.body.statements.length === 1
+            ? property.body.statements[0]
+            : undefined;
+        return !(
+          only !== undefined &&
+          ts.isReturnStatement(only) &&
+          only.expression !== undefined &&
+          isFixedNumber(only.expression)
         );
       });
     // The object a write is given, inline or through a variable in scope.
@@ -378,9 +410,11 @@ function analyze(): Analysis {
           // writes that add an entry pass `{ key, id, sumValue }` instead.
           // Count that as configuring the sum, as the TableAggregate option
           // is, when the value comes from the amount.
-          const entryIndex = sumValueWriteMethods.get(name);
-          const entry =
-            entryIndex === undefined ? undefined : node.arguments[entryIndex];
+          // The entry being added is the last argument: `insert(ctx, entry)`,
+          // `replace(ctx, old, entry)`, or the same with `ctx` left out.
+          const entry = sumValueWriteMethods.has(name)
+            ? node.arguments[node.arguments.length - 1]
+            : undefined;
           const entryObject =
             entry === undefined ? undefined : objectArgument(entry);
           if (entryObject !== undefined && setsSumValue(entryObject, true)) {
