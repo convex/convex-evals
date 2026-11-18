@@ -4,12 +4,15 @@ Create these files:
 
 1. `convex/schema.ts`
 ```ts
-export default {
-  items: {
-    name: string,
-    description: string,
-  },
-};
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  items: defineTable({
+    name: v.string(),
+    description: v.string(),
+  }),
+});
 ```
 No indexes are required.
 

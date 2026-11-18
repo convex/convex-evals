@@ -2,11 +2,12 @@ import { expect, test, beforeEach } from "vitest";
 import {
   deleteAllDocuments,
   getSchema,
+  listTable,
   responseAdminClient,
   responseClient,
   readOutputFile,
-  containsCollectCall,
 } from "../../../grader";
+import { collectsTicketsTable } from "./collectCheck";
 import { anyApi } from "convex/server";
 
 beforeEach(async () => {
@@ -51,6 +52,29 @@ test("getTicketCount returns the correct count after creating tickets", async ()
   expect(count).toBe(3);
 });
 
+test("createTicket stores every ticket", async () => {
+  const created = [
+    { orgId: "org-1", title: "Fix login bug", status: "open" },
+    { orgId: "org-1", title: "Add dark mode", status: "closed" },
+    { orgId: "org-2", title: "Update docs", status: "open" },
+  ];
+  for (const ticket of created) {
+    await responseClient.mutation(anyApi.index.createTicket, ticket);
+  }
+
+  const tickets = (await listTable(responseAdminClient, "tickets")) as {
+    orgId?: unknown;
+    title?: unknown;
+    status?: unknown;
+  }[];
+  const stored = tickets.map(({ orgId, title, status }) =>
+    JSON.stringify({ orgId, title, status }),
+  );
+  expect(stored.sort()).toEqual(
+    created.map((ticket) => JSON.stringify(ticket)).sort(),
+  );
+});
+
 test("getTicketCount returns independent counts per org", async () => {
   await responseClient.mutation(anyApi.index.createTicket, {
     orgId: "org-1",
@@ -86,11 +110,11 @@ test("getTicketCount returns independent counts per org", async () => {
   expect(countOrg3).toBe(0);
 });
 
-test("generated solution does not use .collect() in convex/index.ts", () => {
+test("generated solution does not .collect() the tickets table in convex/index.ts", () => {
   const sourceText = readOutputFile(
     "002-queries",
     "023-count_without_collect",
     "convex/index.ts",
   );
-  expect(containsCollectCall(sourceText, "convex/index.ts")).toBe(false);
+  expect(collectsTicketsTable(sourceText)).toBe(false);
 });

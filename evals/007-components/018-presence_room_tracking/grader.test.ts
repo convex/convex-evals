@@ -309,7 +309,7 @@ test("generated solution pins and mounts the presence component", () => {
     readOutputFile(CATEGORY, EVAL_NAME, "package.json"),
   ) as { dependencies?: Record<string, string> };
   expect(packageJson.dependencies?.["@convex-dev/presence"]).toBe("0.3.2");
-  expect(packageJson.dependencies?.["convex"]).toBe("1.41.0");
+  expect(packageJson.dependencies?.["convex"]).toBe("1.50.0");
 
   const config = readOutputFile(CATEGORY, EVAL_NAME, "convex/convex.config.ts");
   expect(

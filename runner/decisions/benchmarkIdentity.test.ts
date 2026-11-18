@@ -23,7 +23,7 @@ describe("independent benchmark identities", () => {
       computeBenchmarkDefinition(discoverBenchmarkEvalPaths(root), root),
     ).toEqual({
       version:
-        "92a60e0bb2f156b5ac44e6ea3f5d03a91deb434b9d002d14819d1fc2b6e35cdb",
+        "db486f75375464212c9cd1f52ff5a827e8cfcf342b499933bc87c77cf191b8da",
       evalCount: 112,
     });
   });

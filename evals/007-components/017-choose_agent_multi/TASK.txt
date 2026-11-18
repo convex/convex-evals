@@ -6,7 +6,7 @@ Requirements:
 - Both assistants' replies are LLM-generated, and both must read and write the SAME durable conversation history: after a handoff, the billing specialist must see everything the customer and the triage assistant already said, and its replies must land in the same transcript.
 - The stored transcript must record which assistant produced each assistant reply.
 
-Create a `package.json` that pins `convex` to exactly `1.41.0` (you may add other dependencies).
+Create a `package.json` that pins `convex` to exactly `1.50.0` (you may add other dependencies).
 
 An `OPENAI_API_KEY` environment variable is already configured on the deployment; use any OpenAI model.
 

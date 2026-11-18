@@ -1,6 +1,6 @@
 Build the backend participant list for a collaborative workspace where the same user often has several tabs and devices open at once.
 
-Create a `package.json` that pins `convex` to exactly `1.41.0` (you may add other dependencies).
+Create a `package.json` that pins `convex` to exactly `1.50.0` (you may add other dependencies).
 
 Create these functions in `convex/index.ts`:
 

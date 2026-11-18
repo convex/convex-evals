@@ -131,6 +131,17 @@ test("handles invalid URLs appropriately", async () => {
   expect(results).toHaveLength(0);
 });
 
+test("does not cache a 4xx response", async () => {
+  const notFoundUrl = `${fixture.baseUrl}/status/404`;
+
+  await expect(
+    responseClient.action(api.index.fetchIfNeeded, { url: notFoundUrl }),
+  ).rejects.toThrow();
+
+  const results = await listTable(responseAdminClient, "fetchRequests");
+  expect(results).toHaveLength(0);
+});
+
 test("getFetchResult returns null when URL not cached", async () => {
   // @ts-ignore
   const missing = await responseClient.query(api.index.getFetchResult, {

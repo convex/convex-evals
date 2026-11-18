@@ -4,7 +4,7 @@ Create a `package.json` that pins these dependencies to exactly these versions (
 ```json
 {
   "dependencies": {
-    "convex": "1.41.0",
+    "convex": "1.50.0",
     "@convex-dev/aggregate": "0.2.2"
   }
 }

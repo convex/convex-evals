@@ -432,8 +432,10 @@ export function attachProviderObservabilityUsage({
   };
 }
 
+// DeepSeek used to be capped at 4096, a limit from the DeepSeek V3 API. V4
+// models allow far more, and at 4096 they often spent it all on reasoning and
+// returned nothing, mostly in the web experiment (Nov 2026 analysis).
 function getMaxOutputTokens(model: ResolvedModel): number {
-  if (model.name.startsWith("deepseek/")) return 4096;
   if (model.name === "anthropic/claude-3.5-sonnet") return 8192;
   return 16384;
 }
@@ -722,7 +724,7 @@ ${fileExample}`,
 - Do NOT write to the \`convex/_generated\` folder. You can assume that \`npx convex dev\` will populate this folder.
 - It's VERY IMPORTANT to output files to the correct paths, as specified in the task description.
 - Always start with \`package.json\` and \`tsconfig.json\` files.
-- Use Convex version "^1.44.0".
+- Use Convex version "^1.50.0", unless the task description gives a Convex version: then use exactly what it says.
 - Use Typescript version "^5.7.3".`);
   }
 
