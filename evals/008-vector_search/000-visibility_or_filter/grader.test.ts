@@ -224,7 +224,7 @@ test("searches with the vector index and loads notes only by ID", () => {
   // Loading hits needs only db.get by ID, so a query on the searched table
   // means rows are found another way, such as ranking them in JavaScript.
   const { vectorSearchCalls, tableQueries } = findTableAccess(
-    readModelConvexSources("008-vector_search", "001-visibility_or_filter"),
+    readModelConvexSources("008-vector_search", "000-visibility_or_filter"),
     "notes",
   );
   expect(vectorSearchCalls).toBeGreaterThan(0);

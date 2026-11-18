@@ -253,7 +253,7 @@ test("ranks with the vector index and loads chunks only by ID", () => {
   // Loading hits needs only db.get by ID, so a query on the searched table
   // means rows are found another way, such as ranking them in JavaScript.
   const { vectorSearchCalls, tableQueries } = findTableAccess(
-    readModelConvexSources("008-vector_search", "003-chunked_document_search"),
+    readModelConvexSources("008-vector_search", "002-chunked_document_search"),
     "chunks",
   );
   expect(vectorSearchCalls).toBeGreaterThan(0);

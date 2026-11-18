@@ -251,7 +251,7 @@ test("searches with the vector index and loads products only by ID", () => {
   // Loading hits needs only db.get by ID, so a query on the searched table
   // means rows are found another way, such as ranking them in JavaScript.
   const { vectorSearchCalls, tableQueries } = findTableAccess(
-    readModelConvexSources("008-vector_search", "002-similar_items"),
+    readModelConvexSources("008-vector_search", "001-similar_items"),
     "products",
   );
   expect(vectorSearchCalls).toBeGreaterThan(0);

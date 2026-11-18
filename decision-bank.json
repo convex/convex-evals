@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "codingEvalCount": 125,
+  "codingEvalCount": 124,
   "banks": [
     {
       "sourceEval": "000-fundamentals/000-empty_functions",
@@ -1007,7 +1007,7 @@
       ]
     },
     {
-      "sourceEval": "008-vector_search/000-basic_vector_search",
+      "sourceEval": "008-vector_search/000-visibility_or_filter",
       "coverageLimits": [
         "No decision question for this source yet; it joined the coding suite after the decision bank was reviewed."
       ],
@@ -1019,7 +1019,7 @@
       ]
     },
     {
-      "sourceEval": "008-vector_search/001-visibility_or_filter",
+      "sourceEval": "008-vector_search/001-similar_items",
       "coverageLimits": [
         "No decision question for this source yet; it joined the coding suite after the decision bank was reviewed."
       ],
@@ -1031,19 +1031,7 @@
       ]
     },
     {
-      "sourceEval": "008-vector_search/002-similar_items",
-      "coverageLimits": [
-        "No decision question for this source yet; it joined the coding suite after the decision bank was reviewed."
-      ],
-      "decisions": [
-        {
-          "id": "gap",
-          "reason": "Added with the November 2026 vector search, file storage and Convex errors coding evals. No decision question has been authored or reviewed for it, so it is coding-only coverage until one is."
-        }
-      ]
-    },
-    {
-      "sourceEval": "008-vector_search/003-chunked_document_search",
+      "sourceEval": "008-vector_search/002-chunked_document_search",
       "coverageLimits": [
         "No decision question for this source yet; it joined the coding suite after the decision bank was reviewed."
       ],
