@@ -402,8 +402,10 @@ export function attachProviderObservabilityUsage({
   };
 }
 
+// DeepSeek used to be capped at 4096, a limit from the DeepSeek V3 API. V4
+// models allow far more, and at 4096 they often spent it all on reasoning and
+// returned nothing, mostly in the web experiment (Nov 2026 analysis).
 function getMaxOutputTokens(model: ResolvedModel): number {
-  if (model.name.startsWith("deepseek/")) return 4096;
   if (model.name === "anthropic/claude-3.5-sonnet") return 8192;
   return 16384;
 }
