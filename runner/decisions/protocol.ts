@@ -43,11 +43,6 @@ export const NATIVE_DECISION_MODELS = {
     provider: "openrouter",
     model: "cloudflare/clef-omni",
   },
-  mercurydecide: {
-    formattedName: "Inception: Mercury Decide",
-    provider: "openrouter",
-    model: "inception/mercury-decide",
-  },
   liquidd1: {
     formattedName: "LiquidAI: d1",
     provider: "openrouter",
@@ -58,10 +53,10 @@ export const NATIVE_DECISION_MODELS = {
     provider: "openrouter",
     model: "microsoft/microsoft-decision-1",
   },
-  decider11: {
-    formattedName: "Perplexity: Decider V1.1 27B",
+  decider12: {
+    formattedName: "Perplexity: Decider V1.2",
     provider: "openrouter",
-    model: "perplexity/pplx-decider-v1.1-27b",
+    model: "perplexity/pplx-decider-v1.2",
   },
   solardecideflash: {
     formattedName: "Upstage: Solar Decide Flash",
@@ -72,6 +67,21 @@ export const NATIVE_DECISION_MODELS = {
     formattedName: "ScaleDown: Classify-1",
     provider: "openrouter",
     model: "scaledown/classify-1",
+  },
+} as const;
+
+// Native models that left OpenRouter. They're out of the cohort, but their runs
+// on older benchmarks keep their names and still count as native decisions.
+export const RETIRED_NATIVE_DECISION_MODELS = {
+  mercurydecide: {
+    formattedName: "Inception: Mercury Decide",
+    provider: "openrouter",
+    model: "inception/mercury-decide",
+  },
+  decider11: {
+    formattedName: "Perplexity: Decider V1.1 27B",
+    provider: "openrouter",
+    model: "perplexity/pplx-decider-v1.1-27b",
   },
 } as const;
 

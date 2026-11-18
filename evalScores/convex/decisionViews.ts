@@ -1,6 +1,7 @@
 import {
   DECISION_CI_MODELS,
   NATIVE_DECISION_MODELS,
+  RETIRED_NATIVE_DECISION_MODELS,
 } from "../../runner/decisions/protocol.js";
 import {
   paginationOptsValidator,
@@ -193,9 +194,10 @@ async function formattedNames(
         .query("models")
         .withIndex("by_slug", (q) => q.eq("slug", slug))
         .unique();
-      const native = Object.values(NATIVE_DECISION_MODELS).find(
-        (candidate) => candidate.model === slug,
-      );
+      const native = [
+        ...Object.values(NATIVE_DECISION_MODELS),
+        ...Object.values(RETIRED_NATIVE_DECISION_MODELS),
+      ].find((candidate) => candidate.model === slug);
       return [slug, model?.formattedName ?? native?.formattedName ?? slug] as const;
     }),
   );
