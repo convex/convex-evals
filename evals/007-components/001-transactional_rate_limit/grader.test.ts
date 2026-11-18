@@ -136,7 +136,7 @@ test("generated solution installs and mounts the rate-limiter component", () => 
     readOutputFile(CATEGORY, EVAL_NAME, "package.json"),
   );
   expect(packageJson.dependencies["@convex-dev/rate-limiter"]).toBe("0.3.2");
-  expect(packageJson.dependencies["convex"]).toBe("1.41.0");
+  expect(packageJson.dependencies["convex"]).toBe("1.50.0");
 
   const config = readOutputFile(CATEGORY, EVAL_NAME, "convex/convex.config.ts");
   expect(config).toMatch(/@convex-dev\/rate-limiter\/convex\.config/);
@@ -500,22 +500,26 @@ test("generated solution consumes the limit before semantic validation", () => {
     const options = rawOptions === undefined ? undefined : resolve(rawOptions);
     if (options !== undefined && ts.isObjectLiteralExpression(options)) {
       for (const property of options.properties) {
-        if (
-          !ts.isPropertyAssignment(property) ||
-          !ts.isIdentifier(property.name)
-        ) {
+        // `{ key, throws: true }` is as valid as `{ key: key, ... }`: the
+        // shorthand's value is the same-named local, which resolve() follows.
+        let name: string;
+        let value: ts.Expression;
+        if (ts.isPropertyAssignment(property) && ts.isIdentifier(property.name)) {
+          name = property.name.text;
+          value = property.initializer;
+        } else if (ts.isShorthandPropertyAssignment(property)) {
+          name = property.name.text;
+          value = property.name;
+        } else {
           continue;
         }
         if (
-          property.name.text === "throws" &&
-          property.initializer.kind === ts.SyntaxKind.TrueKeyword
+          name === "throws" &&
+          resolve(value).kind === ts.SyntaxKind.TrueKeyword
         ) {
           throwsTrue = true;
         }
-        if (
-          property.name.text === "key" &&
-          referencesTokenIdentifier(property.initializer)
-        ) {
+        if (name === "key" && referencesTokenIdentifier(value)) {
           keyedOnTokenIdentifier = true;
         }
       }

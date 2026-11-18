@@ -30,7 +30,7 @@ test("no application tables", async () => {
 
 test("pins and mounts Action Cache", () => {
   const pkg = JSON.parse(readOutputFile(CATEGORY, EVAL_NAME, "package.json"));
-  expect(pkg.dependencies.convex).toBe("1.41.0");
+  expect(pkg.dependencies.convex).toBe("1.50.0");
   expect(pkg.dependencies["@convex-dev/action-cache"]).toBe("0.3.1");
   const config = readOutputFile(CATEGORY, EVAL_NAME, "convex/convex.config.ts");
   expect(config).toContain("@convex-dev/action-cache/convex.config");

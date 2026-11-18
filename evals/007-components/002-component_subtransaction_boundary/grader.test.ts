@@ -96,7 +96,7 @@ test("generated solution pins the required dependency", () => {
   const packageJson = JSON.parse(
     readOutputFile(CATEGORY, EVAL_NAME, "package.json"),
   );
-  expect(packageJson.dependencies["convex"]).toBe("1.41.0");
+  expect(packageJson.dependencies["convex"]).toBe("1.50.0");
 });
 
 test("generated solution authors a local component that inserts before throwing", () => {

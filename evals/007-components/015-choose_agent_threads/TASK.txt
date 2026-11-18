@@ -5,7 +5,7 @@ Requirements:
 - Every user can have many conversations. A conversation is durable: a user can close the app, sign in later from another device, and continue where they left off with the full back-and-forth intact. Nothing conversation-related may live in memory or on the client.
 - The full message history of a conversation must be retrievable for rendering.
 
-Create a `package.json` that pins `convex` to exactly `1.41.0` (you may add other dependencies).
+Create a `package.json` that pins `convex` to exactly `1.50.0` (you may add other dependencies).
 
 An `OPENAI_API_KEY` environment variable is already configured on the deployment; use any OpenAI model.
 

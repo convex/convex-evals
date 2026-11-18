@@ -207,6 +207,26 @@ function analyze(): Analysis {
         const receiver = node.expression.expression;
         if (ts.isIdentifier(receiver) && clientVars.has(receiver.text)) {
           if (writeMethods.has(name)) synchronizesWrites = true;
+          // DirectAggregate has no sumValue option in its constructor: each
+          // write passes `{ key, id, sumValue }` instead. Count that as
+          // configuring the sum, as the TableAggregate option is.
+          if (
+            writeMethods.has(name) &&
+            node.arguments.some((argument) => {
+              const value = unwrap(argument);
+              return (
+                ts.isObjectLiteralExpression(value) &&
+                value.properties.some(
+                  (property) =>
+                    property.name !== undefined &&
+                    ts.isIdentifier(property.name) &&
+                    property.name.text === "sumValue",
+                )
+              );
+            })
+          ) {
+            configuresSumValue = true;
+          }
           if (readMethods.has(name)) readsFromAggregate = true;
           if (name === "sum") usesSum = true;
         }

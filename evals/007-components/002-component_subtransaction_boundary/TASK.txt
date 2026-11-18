@@ -4,7 +4,7 @@ Create a `package.json` that pins this dependency to exactly this version (you m
 ```json
 {
   "dependencies": {
-    "convex": "1.41.0"
+    "convex": "1.50.0"
   }
 }
 ```

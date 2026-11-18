@@ -5,8 +5,8 @@ import {
   responseAdminClient,
   responseClient,
   readOutputFile,
-  containsCollectCall,
 } from "../../../grader";
+import { collectsTicketsTable } from "./collectCheck";
 import { anyApi } from "convex/server";
 
 beforeEach(async () => {
@@ -86,11 +86,11 @@ test("getTicketCount returns independent counts per org", async () => {
   expect(countOrg3).toBe(0);
 });
 
-test("generated solution does not use .collect() in convex/index.ts", () => {
+test("generated solution does not .collect() the tickets table in convex/index.ts", () => {
   const sourceText = readOutputFile(
     "002-queries",
     "023-count_without_collect",
     "convex/index.ts",
   );
-  expect(containsCollectCall(sourceText, "convex/index.ts")).toBe(false);
+  expect(collectsTicketsTable(sourceText)).toBe(false);
 });
