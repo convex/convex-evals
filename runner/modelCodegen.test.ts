@@ -349,7 +349,7 @@ describe("renderPrompt", () => {
     expect(prompt).not.toContain(
       "Always start with `package.json` and `tsconfig.json` files",
     );
-    expect(prompt).not.toContain('- Use Convex version "^1.44.0"');
+    expect(prompt).not.toContain("- Use Convex version");
   });
 
   it("includes task description in backtick block", () => {

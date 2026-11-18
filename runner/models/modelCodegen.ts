@@ -688,7 +688,7 @@ ${fileExample}`,
 - Do NOT write to the \`convex/_generated\` folder. You can assume that \`npx convex dev\` will populate this folder.
 - It's VERY IMPORTANT to output files to the correct paths, as specified in the task description.
 - Always start with \`package.json\` and \`tsconfig.json\` files.
-- Use Convex version "^1.50.0".
+- Use Convex version "^1.50.0", unless the task description gives a Convex version: then use exactly what it says.
 - Use Typescript version "^5.7.3".`);
   }
 
