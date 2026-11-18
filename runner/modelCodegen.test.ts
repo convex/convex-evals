@@ -1,3 +1,4 @@
+import { computeWebUsage } from "../evalScores/convex/webUsage";
 import { describe, it, expect } from "bun:test";
 import type { LanguageModelUsage } from "ai";
 import { computeRunCostUsd } from "../evalScores/convex/scoringUtils.js";
@@ -13,6 +14,71 @@ import {
 } from "./models/modelCodegen.js";
 
 describe("provider observability", () => {
+  it("a discarded empty attempt with no web calls keeps web counts known", () => {
+    const observed = attachProviderObservabilityUsage({
+      usage: attachProviderObservabilityUsage({
+        usage: undefined,
+        sessionId: "fixture",
+        attempts: [],
+      }),
+      sessionId: "fixture",
+      webResearch: true,
+      attempts: [
+        {
+          attempt: 1,
+          durationMs: 1,
+          outcome: "empty_response",
+          noWebUsage: true,
+        },
+        { attempt: 2, durationMs: 1, outcome: "success" },
+      ],
+    });
+    expect(observed.raw?.providerUsageExcludesFailedAttempts).toBe(false);
+  });
+
+  it.each([
+    [true, 0],
+    [false, null],
+  ])(
+    "an eval empty on every attempt records zero web counts only when no attempt searched (noWebUsage=%s)",
+    (secondNoWebUsage, expectedSearches) => {
+      const failed = attachProviderObservabilityUsage({
+        usage: undefined,
+        sessionId: "fixture",
+        webResearch: true,
+        attempts: [
+          {
+            attempt: 1,
+            durationMs: 1,
+            outcome: "empty_response",
+            noWebUsage: true,
+          },
+          {
+            attempt: 2,
+            durationMs: 1,
+            outcome: "empty_response",
+            noWebUsage: secondNoWebUsage,
+          },
+        ],
+      });
+      const counts = computeWebUsage([
+        {
+          status: {
+            kind: "failed",
+            durationMs: 1,
+            failureReason: "x",
+            usage: failed,
+          },
+        },
+      ] as Parameters<typeof computeWebUsage>[0]);
+      expect(counts.reportedSearchEvalCount).toBe(
+        expectedSearches === null ? 0 : 1,
+      );
+      if (expectedSearches !== null)
+        expect(counts.searchRequests).toBe(expectedSearches);
+    },
+  );
+
   it.each([false, true])(
     "retains the successful retry cost with provider attempt diagnostics (web=%s)",
     (webResearch) => {

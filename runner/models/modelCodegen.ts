@@ -315,15 +315,24 @@ export type ProviderAttempt = {
     | "transient_error"
     | "error";
   openRouterGenerationId?: string;
+  /** A failed attempt known to have made no web calls (see noWebUsage). */
+  noWebUsage?: boolean;
 };
 
 export class EmptyProviderResponseError extends Error {
   readonly openRouterGenerationId?: string;
+  /** The attempt made no web search or fetch, so dropping it hides no web
+   * usage. Only the client-web path knows this and sets it. */
+  readonly noWebUsage: boolean;
 
-  constructor(openRouterGenerationId?: string) {
+  constructor(
+    openRouterGenerationId?: string,
+    options: { noWebUsage?: boolean } = {},
+  ) {
     super("Provider returned an empty response");
     this.name = "EmptyProviderResponseError";
     this.openRouterGenerationId = openRouterGenerationId;
+    this.noWebUsage = options.noWebUsage ?? false;
   }
 }
 
@@ -361,6 +370,24 @@ export function attachProviderObservabilityUsage({
     attempt.openRouterGenerationId ? [attempt.openRouterGenerationId] : [],
   );
 
+  // Every attempt came back empty before any web call: zero searches and
+  // fetches is the exact count, so record it rather than leave the eval
+  // without counters, which would make the run's web averages unknown.
+  const noWebCalls =
+    webResearch &&
+    usage === undefined &&
+    attempts.length > 0 &&
+    attempts.every((attempt) => attempt.noWebUsage);
+  const webResearchCounts = noWebCalls
+    ? {
+        webResearch: {
+          searchRequests: 0,
+          fetchRequests: 0,
+          countSource: "client-dispatched",
+        },
+      }
+    : {};
+
   return {
     inputTokens: usage?.inputTokens,
     inputTokenDetails: usage?.inputTokenDetails ?? {
@@ -378,6 +405,7 @@ export function attachProviderObservabilityUsage({
     cachedInputTokens: usage?.cachedInputTokens,
     raw: {
       ...raw,
+      ...webResearchCounts,
       requestSessionId: sessionId,
       ...(generationIds.length > 0
         ? {
@@ -393,8 +421,10 @@ export function attachProviderObservabilityUsage({
             providerUsageScope: usage
               ? "successful_attempt_only"
               : "unavailable",
+            // A discarded attempt that made no web calls hides no web
+            // counts, so it doesn't make the leaderboard's averages unknown.
             providerUsageExcludesFailedAttempts: attempts.some(
-              (attempt) => attempt.outcome !== "success",
+              (attempt) => attempt.outcome !== "success" && !attempt.noWebUsage,
             ),
           }
         : {}),
@@ -451,6 +481,12 @@ export class Model {
         sessionId: request.sessionId,
         tracePath: request.webTracePath,
       });
+      // Match the baseline paths: an empty answer is a provider failure the
+      // runner retries, not a model answer to grade (see generateWithClientWeb).
+      if (result.retryableEmpty)
+        throw new EmptyProviderResponseError(result.openRouterGenerationId, {
+          noWebUsage: result.noWebUsage,
+        });
       return {
         files: parseMarkdownResponse(result.text),
         usage: result.usage,

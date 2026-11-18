@@ -58,8 +58,6 @@ export async function generateWithClientWeb(options: {
         events.push(event);
       },
     });
-    if (!result.text.trim() && result.modelOutcome === "completed")
-      throw new Error("Empty final answer");
     if (result.summary.unknownOutcomes || result.summary.incompleteAttempts)
       throw new Error(
         "Unresolved tool outcome; exclude this eval from scored results",
@@ -145,10 +143,32 @@ export async function generateWithClientWeb(options: {
       },
     };
     journal({ kind: "generation_usage", usage });
+    // Empty answers that the baseline would retry are retried here too:
+    // - a turn with no text and no tool calls (empty_response), at any point;
+    // - a token-limit cutoff with no text before any web call. DeepSeek's
+    //   4096-token cap often runs out on reasoning in the first turn.
+    // A cutoff after research, or an empty answer from ignoring the tool
+    // budget, is graded as the model's own result, as before.
+    // noWebUsage tells the runner that nothing searched or fetched is lost
+    // with the discarded attempt, so the web counts stay exact.
+    const noWebUsage =
+      result.summary.searchAttempts + result.summary.fetchAttempts === 0;
+    const retryableEmpty =
+      !result.text.trim() &&
+      (result.modelOutcome === "empty_response" ||
+        (result.modelOutcome === "output_limit" && noWebUsage));
+    if (retryableEmpty)
+      journal({
+        kind: "generation_discarded",
+        reason: "empty answer; the runner retries it",
+        noWebUsage,
+      });
     return {
       text: result.text,
       usage,
       openRouterGenerationId: ids.at(-1),
+      retryableEmpty,
+      noWebUsage,
     };
   } catch (error) {
     let message = String(error);
@@ -159,8 +179,9 @@ export async function generateWithClientWeb(options: {
     } catch {
       /* Preserve the original failure if the journal itself failed. */
     }
-    // Do not let the runner retry the entire paid tool loop or grade an
-    // interrupted generation as a model failure. The journal retains evidence.
+    // Do not let the runner retry a paid tool loop that failed partway, or
+    // grade an interrupted generation as a model failure. The journal retains
+    // evidence. (Empty answers are handled above, not here.)
     throw new InfrastructureError(
       `Client web generation failed; trace ${options.tracePath}: ${message}`,
     );

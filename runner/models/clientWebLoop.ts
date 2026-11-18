@@ -8,6 +8,13 @@ import {
   type ToolCall,
 } from "./clientWebTools";
 
+export type ClientWebOutcome =
+  | "completed"
+  | "output_limit"
+  | "empty_response"
+  | "tool_budget_exhausted"
+  | "invalid_tool_calls";
+
 export async function runClientWebLoop(options: {
   model: string;
   purpose?: "smoke" | "eval-generation";
@@ -47,7 +54,11 @@ export async function runClientWebLoop(options: {
     prompt: options.prompt,
     purpose: options.purpose ?? "smoke",
   });
-  const finish = (text: string, turn: number, modelOutcome = "completed") => {
+  const finish = (
+    text: string,
+    turn: number,
+    modelOutcome: ClientWebOutcome = "completed",
+  ) => {
     const result = {
       text,
       summary: tools.summary(),
@@ -140,6 +151,14 @@ export async function runClientWebLoop(options: {
         );
       }
       if (!calls.length) {
+        // No text and no calls (content "" or null, whatever the finish
+        // reason) is an empty provider turn. The baseline retries those, so
+        // report it rather than throwing, which would abort the whole run.
+        if (
+          options.purpose === "eval-generation" &&
+          (typeof message.content !== "string" || !message.content.trim())
+        )
+          return finish("", turn, "empty_response");
         if (
           choice.finish_reason !== "stop" ||
           typeof message.content !== "string"
