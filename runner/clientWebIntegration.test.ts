@@ -215,12 +215,16 @@ test("token cutoff is graded like baseline without executing partial calls", asy
 
 // DeepSeek's 4096-token cap often runs out on reasoning before any text, which
 // used to be graded as a failed eval here while the baseline paths retried it.
+// A null-content stop used to abort the whole run.
 test.each([
-  ["length", "output_limit"],
-  ["stop", "completed"],
+  ["length", ""],
+  ["stop", ""],
+  ["stop", null],
+  ["stop", "  \n"],
+  ["content_filter", null],
 ])(
-  "an empty %s turn is a retryable provider failure, like baseline",
-  async (finishReason) => {
+  "an empty %s turn (content %p) before any web call is retried, like baseline",
+  async (finishReason, content) => {
     globalThis.fetch = Object.assign(
       async () =>
         Response.json({
@@ -228,7 +232,7 @@ test.each([
           choices: [
             {
               finish_reason: finishReason,
-              message: { role: "assistant", content: "" },
+              message: { role: "assistant", content },
             },
           ],
         }),
@@ -245,11 +249,72 @@ test.each([
       .catch((e: unknown) => e);
     expect(error).toBeInstanceOf(EmptyProviderResponseError);
     expect(error).not.toBeInstanceOf(InfrastructureError);
-    expect((error as EmptyProviderResponseError).openRouterGenerationId).toBe(
-      "gen-empty",
+    expect(error).toMatchObject({
+      openRouterGenerationId: "gen-empty",
+      noWebUsage: true,
+    });
+    expect(readFileSync(join(dir, "trace.jsonl"), "utf8")).toContain(
+      "generation_discarded",
     );
   },
 );
+
+test("an empty answer after a web search is graded, not retried", async () => {
+  let turn = 0;
+  globalThis.fetch = Object.assign(
+    async (url: string | URL | Request) => {
+      const requestUrl =
+        typeof url === "string" ? url : url instanceof URL ? url.href : url.url;
+      if (requestUrl.includes("api.exa.ai"))
+        return Response.json({
+          requestId: "exa-1",
+          results: [],
+          costDollars: { total: 0.007 },
+        });
+      turn++;
+      return Response.json({
+        id: `gen-${turn}`,
+        choices: [
+          turn === 1
+            ? {
+                finish_reason: "tool_calls",
+                message: {
+                  role: "assistant",
+                  content: null,
+                  tool_calls: [
+                    {
+                      id: "s1",
+                      type: "function",
+                      function: {
+                        name: "web_search",
+                        arguments: '{"query":"Convex"}',
+                      },
+                    },
+                  ],
+                },
+              }
+            : {
+                finish_reason: "length",
+                message: { role: "assistant", content: "" },
+              },
+        ],
+      });
+    },
+    { preconnect: fetchBefore.preconnect },
+  ) as typeof fetch;
+  const result = await new Model(
+    "key",
+    resolveModelDefaults("deepseek/deepseek-v4-pro"),
+  ).generate("task", {
+    sessionId: "s",
+    webTracePath: join(dir, "trace.jsonl"),
+  });
+  expect(result.files).toEqual({});
+  expect(result.usage?.raw?.clientWeb).toMatchObject({
+    modelOutcome: "output_limit",
+    searchAttempts: 1,
+  });
+});
 
 test("zero tool use is observed while absent model cost remains unknown", async () => {
   globalThis.fetch = Object.assign(

@@ -730,6 +730,9 @@ async function processOneEval(
             : e instanceof WebResearchProviderError
               ? e.generationId
               : undefined,
+        ...(e instanceof EmptyProviderResponseError && e.noWebUsage
+          ? { noWebUsage: true }
+          : {}),
       });
       logInfo(
         `[${evalPathStr}] Provider attempt ${attempt + 1}: session=${requestSessionId} generation=${

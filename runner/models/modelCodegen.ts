@@ -315,15 +315,24 @@ export type ProviderAttempt = {
     | "transient_error"
     | "error";
   openRouterGenerationId?: string;
+  /** A failed attempt known to have made no web calls (see noWebUsage). */
+  noWebUsage?: boolean;
 };
 
 export class EmptyProviderResponseError extends Error {
   readonly openRouterGenerationId?: string;
+  /** The attempt made no web search or fetch, so dropping it hides no web
+   * usage. Only the client-web path knows this and sets it. */
+  readonly noWebUsage: boolean;
 
-  constructor(openRouterGenerationId?: string) {
+  constructor(
+    openRouterGenerationId?: string,
+    options: { noWebUsage?: boolean } = {},
+  ) {
     super("Provider returned an empty response");
     this.name = "EmptyProviderResponseError";
     this.openRouterGenerationId = openRouterGenerationId;
+    this.noWebUsage = options.noWebUsage ?? false;
   }
 }
 
@@ -393,8 +402,10 @@ export function attachProviderObservabilityUsage({
             providerUsageScope: usage
               ? "successful_attempt_only"
               : "unavailable",
+            // A discarded attempt that made no web calls hides no web
+            // counts, so it doesn't make the leaderboard's averages unknown.
             providerUsageExcludesFailedAttempts: attempts.some(
-              (attempt) => attempt.outcome !== "success",
+              (attempt) => attempt.outcome !== "success" && !attempt.noWebUsage,
             ),
           }
         : {}),
@@ -451,18 +462,12 @@ export class Model {
         sessionId: request.sessionId,
         tracePath: request.webTracePath,
       });
-      // Match the baseline paths: a turn that ends with no text at all is a
-      // provider failure the runner retries, not a model answer to grade.
-      // DeepSeek's 4096-token cap often runs out on reasoning in this loop
-      // before any text arrives. A model that ignores the final-answer
-      // instruction or sends a bad tool batch still gets graded as empty,
-      // because that is its own behaviour.
-      if (
-        !result.text.trim() &&
-        (result.modelOutcome === "completed" ||
-          result.modelOutcome === "output_limit")
-      )
-        throw new EmptyProviderResponseError(result.openRouterGenerationId);
+      // Match the baseline paths: no text before any web call is a provider
+      // failure the runner retries, not a model answer to grade.
+      if (result.retryableEmpty)
+        throw new EmptyProviderResponseError(result.openRouterGenerationId, {
+          noWebUsage: true,
+        });
       return {
         files: parseMarkdownResponse(result.text),
         usage: result.usage,

@@ -13,6 +13,28 @@ import {
 } from "./models/modelCodegen.js";
 
 describe("provider observability", () => {
+  it("a discarded empty attempt with no web calls keeps web counts known", () => {
+    const observed = attachProviderObservabilityUsage({
+      usage: attachProviderObservabilityUsage({
+        usage: undefined,
+        sessionId: "fixture",
+        attempts: [],
+      }),
+      sessionId: "fixture",
+      webResearch: true,
+      attempts: [
+        {
+          attempt: 1,
+          durationMs: 1,
+          outcome: "empty_response",
+          noWebUsage: true,
+        },
+        { attempt: 2, durationMs: 1, outcome: "success" },
+      ],
+    });
+    expect(observed.raw?.providerUsageExcludesFailedAttempts).toBe(false);
+  });
+
   it.each([false, true])(
     "retains the successful retry cost with provider attempt diagnostics (web=%s)",
     (webResearch) => {
