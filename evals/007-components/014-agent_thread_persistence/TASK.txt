@@ -4,7 +4,7 @@ Create a `package.json` that pins these dependencies to exactly these versions (
 ```json
 {
   "dependencies": {
-    "convex": "1.41.0",
+    "convex": "1.50.0",
     "@convex-dev/agent": "0.6.4",
     "ai": "6.0.229",
     "@ai-sdk/provider-utils": "4.0.39",

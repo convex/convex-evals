@@ -149,7 +149,7 @@ test("generated solution installs and mounts the aggregate component", () => {
     readOutputFile(CATEGORY, EVAL_NAME, "package.json"),
   );
   expect(packageJson.dependencies["@convex-dev/aggregate"]).toBe("0.2.2");
-  expect(packageJson.dependencies["convex"]).toBe("1.41.0");
+  expect(packageJson.dependencies["convex"]).toBe("1.50.0");
 
   const config = readOutputFile(CATEGORY, EVAL_NAME, "convex/convex.config.ts");
   expect(hasAggregateMount(config)).toBe(true);

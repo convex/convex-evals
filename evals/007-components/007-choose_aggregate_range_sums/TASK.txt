@@ -1,6 +1,6 @@
 Build a backend for recording transactions and reporting totals over time periods.
 
-Create a `package.json` that pins `convex` to exactly `1.41.0` (you may add other dependencies).
+Create a `package.json` that pins `convex` to exactly `1.50.0` (you may add other dependencies).
 
 Write this schema to `convex/schema.ts`:
 ```ts

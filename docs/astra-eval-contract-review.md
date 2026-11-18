@@ -144,9 +144,9 @@ these concrete checks with an AI pass/fail judgment.
 - Standard `no_guidelines` generation omits guidance and research tools; code is
   scored without a repair loop. Interpret its API failures under those conditions,
   not as a verdict on a documentation-assisted coding workflow.
-- The generic backend prompt requests Convex `^1.44.0`, while the seven reviewed
-  selection tasks request exactly `1.41.0`. The task's specific requirement is
-  reasonably controlling, but the contradictory instructions should be removed.
+- The generic backend prompt requested Convex `^1.44.0`, while the seven reviewed
+  selection tasks requested exactly `1.41.0`. Fixed in Nov 2026: the tasks pin
+  `1.50.0` and the prompt says to use a version the task gives exactly.
 - The generic prompt always requests `tsconfig.json`, while heartbeat and cascade
   tasks give narrower exclusive file lists. Make task-specific file/version
   requirements authoritative in prompt generation. This is a separate input

@@ -160,7 +160,7 @@ test("generated solution pins the component and its peers, and mounts it", () =>
   const packageJson = JSON.parse(
     readOutputFile(CATEGORY, EVAL_NAME, "package.json"),
   );
-  expect(packageJson.dependencies["convex"]).toBe("1.41.0");
+  expect(packageJson.dependencies["convex"]).toBe("1.50.0");
   expect(packageJson.dependencies["@convex-dev/agent"]).toBe("0.6.4");
   expect(packageJson.dependencies["ai"]).toBe("6.0.229");
   expect(packageJson.dependencies["@ai-sdk/provider-utils"]).toBe("4.0.39");

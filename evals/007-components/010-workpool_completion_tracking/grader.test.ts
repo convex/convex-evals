@@ -1271,7 +1271,7 @@ const analysis = analyze();
 
 test("pins the workpool component and its runtime peer exactly", () => {
   expect(analysis.dependencies["@convex-dev/workpool"]).toBe("0.4.8");
-  expect(analysis.dependencies["convex"]).toBe("1.41.0");
+  expect(analysis.dependencies["convex"]).toBe("1.50.0");
   expect(analysis.dependencies["convex-helpers"]).toBe("0.1.111");
 });
 

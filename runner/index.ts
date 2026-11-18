@@ -730,6 +730,9 @@ async function processOneEval(
             : e instanceof WebResearchProviderError
               ? e.generationId
               : undefined,
+        ...(e instanceof EmptyProviderResponseError && e.noWebUsage
+          ? { noWebUsage: true }
+          : {}),
       });
       logInfo(
         `[${evalPathStr}] Provider attempt ${attempt + 1}: session=${requestSessionId} generation=${
@@ -741,7 +744,12 @@ async function processOneEval(
         } outcome=${providerAttempts[providerAttempts.length - 1].outcome}`,
       );
 
-      if (e instanceof WebResearchProviderError) {
+      if (
+        e instanceof WebResearchProviderError ||
+        (e instanceof EmptyProviderResponseError &&
+          isWebResearchExperiment(process.env.EVALS_EXPERIMENT) &&
+          !e.noWebUsage)
+      ) {
         logInfo(
           `[${evalPathStr}] Failed-attempt usage and charges are excluded from reported totals; consult the research trace.`,
         );
