@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Model } from "./models/modelCodegen";
+import { EmptyProviderResponseError, Model } from "./models/modelCodegen";
 import { resolveModelDefaults, SYSTEM_PROMPT } from "./models/index";
 import { validateClientWebRun } from "./models/clientWebResearch";
 import { InfrastructureError } from "./convexBackend";
@@ -212,6 +212,44 @@ test("token cutoff is graded like baseline without executing partial calls", asy
     "output_limit",
   );
 });
+
+// DeepSeek's 4096-token cap often runs out on reasoning before any text, which
+// used to be graded as a failed eval here while the baseline paths retried it.
+test.each([
+  ["length", "output_limit"],
+  ["stop", "completed"],
+])(
+  "an empty %s turn is a retryable provider failure, like baseline",
+  async (finishReason) => {
+    globalThis.fetch = Object.assign(
+      async () =>
+        Response.json({
+          id: "gen-empty",
+          choices: [
+            {
+              finish_reason: finishReason,
+              message: { role: "assistant", content: "" },
+            },
+          ],
+        }),
+      { preconnect: fetchBefore.preconnect },
+    ) as typeof fetch;
+    const error = await new Model(
+      "key",
+      resolveModelDefaults("deepseek/deepseek-v4-pro"),
+    )
+      .generate("task", {
+        sessionId: "s",
+        webTracePath: join(dir, "trace.jsonl"),
+      })
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(EmptyProviderResponseError);
+    expect(error).not.toBeInstanceOf(InfrastructureError);
+    expect((error as EmptyProviderResponseError).openRouterGenerationId).toBe(
+      "gen-empty",
+    );
+  },
+);
 
 test("zero tool use is observed while absent model cost remains unknown", async () => {
   globalThis.fetch = Object.assign(

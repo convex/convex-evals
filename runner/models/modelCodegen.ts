@@ -451,6 +451,18 @@ export class Model {
         sessionId: request.sessionId,
         tracePath: request.webTracePath,
       });
+      // Match the baseline paths: a turn that ends with no text at all is a
+      // provider failure the runner retries, not a model answer to grade.
+      // DeepSeek's 4096-token cap often runs out on reasoning in this loop
+      // before any text arrives. A model that ignores the final-answer
+      // instruction or sends a bad tool batch still gets graded as empty,
+      // because that is its own behaviour.
+      if (
+        !result.text.trim() &&
+        (result.modelOutcome === "completed" ||
+          result.modelOutcome === "output_limit")
+      )
+        throw new EmptyProviderResponseError(result.openRouterGenerationId);
       return {
         files: parseMarkdownResponse(result.text),
         usage: result.usage,

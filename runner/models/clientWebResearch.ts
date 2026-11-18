@@ -58,8 +58,6 @@ export async function generateWithClientWeb(options: {
         events.push(event);
       },
     });
-    if (!result.text.trim() && result.modelOutcome === "completed")
-      throw new Error("Empty final answer");
     if (result.summary.unknownOutcomes || result.summary.incompleteAttempts)
       throw new Error(
         "Unresolved tool outcome; exclude this eval from scored results",
@@ -149,6 +147,7 @@ export async function generateWithClientWeb(options: {
       text: result.text,
       usage,
       openRouterGenerationId: ids.at(-1),
+      modelOutcome: result.modelOutcome,
     };
   } catch (error) {
     let message = String(error);
