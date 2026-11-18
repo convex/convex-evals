@@ -1,6 +1,6 @@
 ---
 name: add-model
-description: Add a new model to the convex-evals coding leaderboard, and optionally the decision benchmark, through a PR, then dispatch its baseline runs. Use when the user wants to add or onboard a model, or names a new model or OpenRouter link for the leaderboard.
+description: Add a new model to the convex-evals coding leaderboard, and optionally the decision benchmark, through a PR, then dispatch its baseline run. Use when the user wants to add or onboard a model, or names a new model or OpenRouter link for the leaderboard.
 ---
 
 # Add a model
@@ -75,7 +75,9 @@ bun run test
 
 Open it against `main` with Why, What, Validation (smoke result, typecheck, test counts) and, if you added a decision key, After merge. PR #340 is the template. Never merge it or enable auto-merge. The maintainer merges.
 
-## 6. Dispatch baseline coding runs
+## 6. Dispatch a baseline coding run
+
+Dispatch one run per model, not three. The periodic schedule adds more runs over time, so one is enough to put the model on the leaderboard (Mike, 2026-11-18). Only dispatch more if he asks.
 
 These don't wait for the merge. The runner discovers the slug, and dispatches on `main` report to the production leaderboard. Other refs run with reporting off.
 
@@ -91,9 +93,9 @@ for exp in '' ',"experiment":"no_guidelines"' ',"experiment":"no_guidelines_with
 done
 ```
 
-That prints the default, no_guidelines and no_guidelines_with_web averages. Web costs include Exa charges. One dispatch runs all three conditions, so three dispatches cost three times the sum. Sonnet 5 on 2026-09-29: $4.17 + $1.82 + $2.55 = $8.54 per dispatch, about $26 total.
+That prints the default, no_guidelines and no_guidelines_with_web averages. Web costs include Exa charges. One dispatch runs all three conditions, so it costs the sum. Sonnet 5 on 2026-09-29: $4.17 + $1.82 + $2.55 = $8.54 per dispatch. Scale by the new model's token price if it differs from the one you looked up.
 
-Then dispatch three times:
+Then dispatch once:
 
 ```bash
 gh workflow run manual_evals.yml --ref main -f models=<slug> -f run_guidelines=true -f run_no_guidelines=true -f run_no_guidelines_with_web=true

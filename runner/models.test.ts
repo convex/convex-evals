@@ -34,8 +34,8 @@ describe("ALL_MODELS", () => {
     expect(ALL_MODELS).toContain("anthropic/claude-opus-5.5");
     expect(ALL_MODELS).toContain("anthropic/claude-fable-5.2");
     expect(ALL_MODELS).toContain("anthropic/claude-haiku-5.5");
-    expect(ALL_MODELS).toContain("openai/gpt-6-astra");
-    expect(ALL_MODELS).toContain("openai/gpt-6.1-sol");
+    expect(ALL_MODELS).toContain("openai/gpt-6.2-astra");
+    expect(ALL_MODELS).toContain("openai/gpt-6.2-sol");
     expect(ALL_MODELS).toContain("google/gemini-4-argon");
     expect(ALL_MODELS).toContain("deepseek/deepseek-v4-pro");
     expect(ALL_MODELS).toContain("z-ai/glm-5.3-flash");
@@ -53,7 +53,7 @@ describe("MODEL_NAMES", () => {
   });
 
   it("contains a known model", () => {
-    expect(MODEL_NAMES.has("openai/gpt-6.1-sol")).toBe(true);
+    expect(MODEL_NAMES.has("openai/gpt-6.2-sol")).toBe(true);
   });
 
   it("returns false for non-existent model", () => {
