@@ -88,12 +88,13 @@ function analyze(): Analysis {
     "delete",
     "deleteIfExists",
   ]);
-  // DirectAggregate writes that take an entry's sumValue.
-  const sumValueWriteMethods = new Set([
-    "insert",
-    "insertIfDoesNotExist",
-    "replace",
-    "replaceOrInsert",
+  // DirectAggregate writes that add an entry with its sumValue, and which
+  // argument that entry is: `insert(ctx, entry)`, `replace(ctx, old, entry)`.
+  const sumValueWriteMethods = new Map([
+    ["insert", 1],
+    ["insertIfDoesNotExist", 1],
+    ["replace", 2],
+    ["replaceOrInsert", 2],
   ]);
   const readMethods = new Set(["count", "indexOf", "indexOfDoc", "at", "sum"]);
   const scanMethods = new Set(["collect", "take", "filter", "paginate"]);
@@ -134,14 +135,92 @@ function analyze(): Analysis {
       }
       return current;
     };
-    // A sumValue that is a fixed number (`sumValue: 1`, `sumValue: () => 1`)
-    // counts rows instead of summing amounts.
-    const isFixedNumber = (expression: ts.Expression): boolean => {
-      let current = unwrap(expression);
+    // A one-file program, only so the checker can resolve each identifier
+    // to the declaration in scope. Imports stay unresolved, which is fine.
+    const checker = ts
+      .createProgram({
+        rootNames: [sourceFile.fileName],
+        options: { noLib: true, noResolve: true, types: [] },
+        host: {
+          getSourceFile: (name) =>
+            name === sourceFile.fileName ? sourceFile : undefined,
+          getDefaultLibFileName: () => "lib.d.ts",
+          writeFile: () => {},
+          getCurrentDirectory: () => "/",
+          getCanonicalFileName: (name) => name,
+          useCaseSensitiveFileNames: () => true,
+          getNewLine: () => "\n",
+          fileExists: (name) => name === sourceFile.fileName,
+          readFile: () => undefined,
+        },
+      })
+      .getTypeChecker();
+    const unwrapAll = (expression: ts.Expression): ts.Expression => {
+      let current = expression;
+      while (
+        ts.isParenthesizedExpression(current) ||
+        ts.isAsExpression(current) ||
+        ts.isSatisfiesExpression(current) ||
+        ts.isNonNullExpression(current) ||
+        ts.isTypeAssertionExpression(current)
+      ) {
+        current = current.expression;
+      }
+      return current;
+    };
+    const declarationOf = (
+      identifier: ts.Identifier,
+    ): ts.Declaration | undefined =>
+      checker.getSymbolAtLocation(identifier)?.valueDeclaration;
+    // Whether a sumValue is worked out from the transaction's amount, so the
+    // aggregate sums amounts. A fixed number counts rows, and another field
+    // such as `happenedAt` sums the wrong thing. A parameter gets the benefit
+    // of the doubt, as its value can't be traced.
+    const mentionsAmount = (node: ts.Node): boolean =>
+      ((ts.isIdentifier(node) || ts.isStringLiteralLike(node)) &&
+        /amount/i.test(node.text)) ||
+      ts.forEachChild(node, mentionsAmount) === true;
+    const declarationCarriesAmount = (
+      declaration: ts.Declaration | undefined,
+      depth: number,
+    ): boolean => {
+      if (declaration === undefined) return false;
+      if (ts.isParameter(declaration)) return true;
+      if (ts.isBindingElement(declaration)) {
+        return mentionsAmount(declaration.propertyName ?? declaration.name);
+      }
+      return (
+        ts.isVariableDeclaration(declaration) &&
+        declaration.initializer !== undefined &&
+        carriesAmount(declaration.initializer, depth + 1)
+      );
+    };
+    const carriesAmount = (expression: ts.Expression, depth = 0): boolean => {
+      const value = unwrapAll(expression);
+      if (mentionsAmount(value)) return true;
+      return (
+        ts.isIdentifier(value) &&
+        depth < 5 &&
+        declarationCarriesAmount(declarationOf(value), depth)
+      );
+    };
+    // A fixed number (`1`, `() => 1`, or a const holding one) counts rows
+    // instead of summing amounts.
+    const isFixedNumber = (expression: ts.Expression, depth = 0): boolean => {
+      let current = unwrapAll(expression);
+      if (ts.isIdentifier(current)) {
+        const declaration = depth < 5 ? declarationOf(current) : undefined;
+        return (
+          declaration !== undefined &&
+          ts.isVariableDeclaration(declaration) &&
+          declaration.initializer !== undefined &&
+          isFixedNumber(declaration.initializer, depth + 1)
+        );
+      }
       if (ts.isArrowFunction(current) || ts.isFunctionExpression(current)) {
         const body = current.body;
         if (!ts.isBlock(body)) {
-          current = unwrap(body);
+          current = unwrapAll(body);
         } else {
           const only =
             body.statements.length === 1 ? body.statements[0] : undefined;
@@ -152,7 +231,7 @@ function analyze(): Analysis {
           ) {
             return false;
           }
-          current = unwrap(only.expression);
+          current = unwrapAll(only.expression);
         }
       }
       return (
@@ -161,7 +240,14 @@ function analyze(): Analysis {
           ts.isNumericLiteral(current.operand))
       );
     };
-    const setsSumValue = (object: ts.ObjectLiteralExpression): boolean =>
+    // Whether an object sets a sumValue. A constructor option counts unless
+    // it's a fixed number: this eval tolerates API slips there, as the usage
+    // eval grades those. A DirectAggregate entry's sumValue (`strict`) must
+    // come from the amount, since it's the only place the sum is configured.
+    const setsSumValue = (
+      object: ts.ObjectLiteralExpression,
+      strict: boolean,
+    ): boolean =>
       object.properties.some((property) => {
         if (
           property.name === undefined ||
@@ -171,56 +257,45 @@ function analyze(): Analysis {
           return false;
         }
         if (ts.isPropertyAssignment(property)) {
-          return !isFixedNumber(property.initializer);
+          return strict
+            ? carriesAmount(property.initializer)
+            : !isFixedNumber(property.initializer);
         }
-        if (ts.isMethodDeclaration(property) && property.body !== undefined) {
-          const only =
-            property.body.statements.length === 1
-              ? property.body.statements[0]
-              : undefined;
+        if (ts.isShorthandPropertyAssignment(property)) {
+          // `{ sumValue }`: the variable it reads, not the property.
+          const declaration =
+            checker.getShorthandAssignmentValueSymbol(
+              property,
+            )?.valueDeclaration;
+          if (strict) return declarationCarriesAmount(declaration, 0);
           return !(
-            only !== undefined &&
-            ts.isReturnStatement(only) &&
-            only.expression !== undefined &&
-            isFixedNumber(only.expression)
+            declaration !== undefined &&
+            ts.isVariableDeclaration(declaration) &&
+            declaration.initializer !== undefined &&
+            isFixedNumber(declaration.initializer)
           );
         }
-        return true;
-      });
-    // `const entry = { key, id, sumValue }` objects, by name, for writes that
-    // pass a variable instead of an inline object. A name declared twice in
-    // the file is ambiguous, so it's left out.
-    const constObjects = new Map<string, ts.ObjectLiteralExpression | null>();
-    const collectObjects = (node: ts.Node) => {
-      if (
-        ts.isVariableDeclaration(node) &&
-        ts.isIdentifier(node.name) &&
-        node.initializer !== undefined
-      ) {
-        const name = node.name.text;
-        const value = unwrap(node.initializer);
-        const isConst =
-          (ts.getCombinedNodeFlags(node) & ts.NodeFlags.Const) !== 0;
-        constObjects.set(
-          name,
-          constObjects.has(name) ||
-            !isConst ||
-            !ts.isObjectLiteralExpression(value)
-            ? null
-            : value,
+        return (
+          (ts.isMethodDeclaration(property) ||
+            ts.isGetAccessorDeclaration(property)) &&
+          property.body !== undefined &&
+          (strict ? mentionsAmount(property.body) : true)
         );
-      }
-      ts.forEachChild(node, collectObjects);
-    };
-    collectObjects(sourceFile);
+      });
+    // The object a write is given, inline or through a variable in scope.
     const objectArgument = (
       argument: ts.Expression,
+      depth = 0,
     ): ts.ObjectLiteralExpression | undefined => {
-      const value = unwrap(argument);
+      const value = unwrapAll(argument);
       if (ts.isObjectLiteralExpression(value)) return value;
-      if (ts.isIdentifier(value))
-        return constObjects.get(value.text) ?? undefined;
-      return undefined;
+      if (!ts.isIdentifier(value) || depth >= 5) return undefined;
+      const declaration = declarationOf(value);
+      return declaration !== undefined &&
+        ts.isVariableDeclaration(declaration) &&
+        declaration.initializer !== undefined
+        ? objectArgument(declaration.initializer, depth + 1)
+        : undefined;
     };
 
     const clientVars = new Set<string>();
@@ -246,7 +321,10 @@ function analyze(): Analysis {
             const options = initializer.arguments?.[1];
             const optionsObject =
               options === undefined ? undefined : objectArgument(options);
-            if (optionsObject !== undefined && setsSumValue(optionsObject)) {
+            if (
+              optionsObject !== undefined &&
+              setsSumValue(optionsObject, false)
+            ) {
               configuresSumValue = true;
             }
           }
@@ -299,14 +377,13 @@ function analyze(): Analysis {
           // DirectAggregate has no sumValue option in its constructor: the
           // writes that add an entry pass `{ key, id, sumValue }` instead.
           // Count that as configuring the sum, as the TableAggregate option
-          // is, unless the value is a fixed number (that counts rows).
-          if (
-            sumValueWriteMethods.has(name) &&
-            node.arguments.some((argument) => {
-              const object = objectArgument(argument);
-              return object !== undefined && setsSumValue(object);
-            })
-          ) {
+          // is, when the value comes from the amount.
+          const entryIndex = sumValueWriteMethods.get(name);
+          const entry =
+            entryIndex === undefined ? undefined : node.arguments[entryIndex];
+          const entryObject =
+            entry === undefined ? undefined : objectArgument(entry);
+          if (entryObject !== undefined && setsSumValue(entryObject, true)) {
             configuresSumValue = true;
           }
           if (readMethods.has(name)) readsFromAggregate = true;

@@ -8,11 +8,12 @@ import ts from "typescript";
  * collects its few shard rows for an org, which stays cheap however many
  * tickets exist. So a `.collect()` is allowed only when its query provably
  * reads another table: `db.query("someOtherTable")`, directly or through a
- * `const` holding the query, the table name, or an object of table names.
+ * variable holding the query, the table name, or an object of table names.
  * Names are resolved by scope, so two functions reusing a variable name can't
- * mask each other, and a `let` or `var` counts as unknown because it can be
- * reassigned. Anything we can't trace, such as a query built in a helper or a
- * wrapper object's own `query()` method, still counts as collecting tickets.
+ * mask each other, and a variable that's reassigned anywhere (or an object
+ * whose properties are) counts as unknown. Anything we can't trace, such as a
+ * query built in a helper or a wrapper object's own `query()` method, still
+ * counts as collecting tickets.
  *
  * Known gap: a model that mirrors every ticket into a second table (one row
  * per ticket, say a `{ orgId, delta: 1 }` row) and collects that would pass
@@ -64,15 +65,78 @@ export function collectsTicketsTable(sourceText: string): boolean {
     return node;
   };
 
-  // The initializer of the `const` this identifier refers to, if any.
-  const constInitializer = (id: ts.Identifier): ts.Expression | undefined => {
-    const declaration = checker.getSymbolAtLocation(id)?.valueDeclaration;
+  // Variables assigned after their declaration, and objects whose
+  // properties are, anywhere in the file. Their initializers can't be trusted.
+  const reassigned = new Set<ts.Symbol>();
+  const mutatedObjects = new Set<ts.Symbol>();
+  const noteTarget = (target: ts.Expression): void => {
+    const node = skipWrappers(target);
+    if (ts.isIdentifier(node)) {
+      const symbol = checker.getSymbolAtLocation(node);
+      if (symbol !== undefined) reassigned.add(symbol);
+    } else if (
+      ts.isPropertyAccessExpression(node) ||
+      ts.isElementAccessExpression(node)
+    ) {
+      const object = skipWrappers(node.expression);
+      if (ts.isIdentifier(object)) {
+        const symbol = checker.getSymbolAtLocation(object);
+        if (symbol !== undefined) mutatedObjects.add(symbol);
+      }
+    } else if (ts.isArrayLiteralExpression(node)) {
+      node.elements.forEach((element) =>
+        noteTarget(ts.isSpreadElement(element) ? element.expression : element),
+      );
+    } else if (ts.isObjectLiteralExpression(node)) {
+      for (const property of node.properties) {
+        if (ts.isShorthandPropertyAssignment(property))
+          noteTarget(property.name);
+        else if (ts.isPropertyAssignment(property))
+          noteTarget(property.initializer);
+        else if (ts.isSpreadAssignment(property))
+          noteTarget(property.expression);
+      }
+    }
+  };
+  const findAssignments = (node: ts.Node): void => {
     if (
+      ts.isBinaryExpression(node) &&
+      node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+      node.operatorToken.kind <= ts.SyntaxKind.LastAssignment
+    ) {
+      noteTarget(node.left);
+    } else if (
+      (ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) &&
+      (node.operator === ts.SyntaxKind.PlusPlusToken ||
+        node.operator === ts.SyntaxKind.MinusMinusToken)
+    ) {
+      noteTarget(node.operand);
+    } else if (
+      (ts.isForOfStatement(node) || ts.isForInStatement(node)) &&
+      !ts.isVariableDeclarationList(node.initializer)
+    ) {
+      noteTarget(node.initializer);
+    }
+    ts.forEachChild(node, findAssignments);
+  };
+  findAssignments(sourceFile);
+
+  // The declaration this identifier refers to, if it's resolvable.
+  const declarationOf = (id: ts.Identifier): ts.Declaration | undefined =>
+    checker.getSymbolAtLocation(id)?.valueDeclaration;
+
+  // The initializer of the variable this identifier refers to, if it's never
+  // reassigned.
+  const constInitializer = (id: ts.Identifier): ts.Expression | undefined => {
+    const symbol = checker.getSymbolAtLocation(id);
+    const declaration = symbol?.valueDeclaration;
+    if (
+      symbol === undefined ||
       declaration === undefined ||
       !ts.isVariableDeclaration(declaration) ||
       !ts.isIdentifier(declaration.name) ||
       declaration.initializer === undefined ||
-      (ts.getCombinedNodeFlags(declaration) & ts.NodeFlags.Const) === 0
+      reassigned.has(symbol)
     ) {
       return undefined;
     }
@@ -94,6 +158,10 @@ export function collectsTicketsTable(sourceText: string): boolean {
       ts.isPropertyAccessExpression(node) &&
       ts.isIdentifier(node.expression)
     ) {
+      const objectSymbol = checker.getSymbolAtLocation(node.expression);
+      if (objectSymbol === undefined || mutatedObjects.has(objectSymbol)) {
+        return undefined;
+      }
       const init = constInitializer(node.expression);
       const object = init === undefined ? undefined : skipWrappers(init);
       if (object === undefined || !ts.isObjectLiteralExpression(object)) {
@@ -113,17 +181,31 @@ export function collectsTicketsTable(sourceText: string): boolean {
     return undefined;
   };
 
-  // `ctx.db`, a parameter or binding named `db`, or a const alias of either.
+  // `ctx.db`, or a name for it: destructured from ctx (`{ db }` or
+  // `{ db: reader }`), a parameter called `db` or typed as a database reader
+  // or writer, or a variable holding one of those. A variable called `db`
+  // that holds something else, such as a wrapper object, doesn't count.
   const isDatabaseReader = (expr: ts.Expression, depth = 0): boolean => {
     const node = skipWrappers(expr);
     if (ts.isPropertyAccessExpression(node)) return node.name.text === "db";
-    if (ts.isIdentifier(node)) {
-      if (node.text === "db") return true;
-      if (depth >= MAX_DEPTH) return false;
-      const init = constInitializer(node);
-      return init !== undefined && isDatabaseReader(init, depth + 1);
+    if (!ts.isIdentifier(node) || depth >= MAX_DEPTH) return false;
+    const declaration = declarationOf(node);
+    if (declaration === undefined) return node.text === "db";
+    if (ts.isBindingElement(declaration)) {
+      const bound = declaration.propertyName ?? declaration.name;
+      return ts.isIdentifier(bound) && bound.text === "db";
     }
-    return false;
+    if (ts.isParameter(declaration)) {
+      return (
+        node.text === "db" ||
+        (declaration.type !== undefined &&
+          /Database(Reader|Writer)\b|\[\s*["']db["']\s*\]/.test(
+            declaration.type.getText(sourceFile),
+          ))
+      );
+    }
+    const init = constInitializer(node);
+    return init !== undefined && isDatabaseReader(init, depth + 1);
   };
 
   // Walk down a call chain like `ctx.db.query("t").withIndex(...).collect()`

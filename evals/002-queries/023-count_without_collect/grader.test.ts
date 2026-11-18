@@ -52,21 +52,28 @@ test("getTicketCount returns the correct count after creating tickets", async ()
   expect(count).toBe(3);
 });
 
-test("createTicket stores the ticket", async () => {
-  await responseClient.mutation(anyApi.index.createTicket, {
-    orgId: "org-1",
-    title: "Fix login bug",
-    status: "open",
-  });
+test("createTicket stores every ticket", async () => {
+  const created = [
+    { orgId: "org-1", title: "Fix login bug", status: "open" },
+    { orgId: "org-1", title: "Add dark mode", status: "closed" },
+    { orgId: "org-2", title: "Update docs", status: "open" },
+  ];
+  for (const ticket of created) {
+    await responseClient.mutation(anyApi.index.createTicket, ticket);
+  }
 
   const tickets = (await listTable(responseAdminClient, "tickets")) as {
     orgId: string;
     title: string;
     status: string;
   }[];
+  const byTitle = (a: { title: string }, b: { title: string }) =>
+    a.title.localeCompare(b.title);
   expect(
-    tickets.map(({ orgId, title, status }) => ({ orgId, title, status })),
-  ).toEqual([{ orgId: "org-1", title: "Fix login bug", status: "open" }]);
+    tickets
+      .map(({ orgId, title, status }) => ({ orgId, title, status }))
+      .sort(byTitle),
+  ).toEqual([...created].sort(byTitle));
 });
 
 test("getTicketCount returns independent counts per org", async () => {
