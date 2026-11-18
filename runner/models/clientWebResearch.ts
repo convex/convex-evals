@@ -143,29 +143,32 @@ export async function generateWithClientWeb(options: {
       },
     };
     journal({ kind: "generation_usage", usage });
-    // An attempt that produced no text before making any web call is an
-    // empty provider response, as the baseline treats it: DeepSeek's
-    // 4096-token cap often runs out on reasoning in the first turn. The
-    // runner retries it, and since no search or fetch was dispatched, nothing
-    // counted or paid for on the web side is lost with it. An empty answer
-    // after research, or from ignoring the tool budget, is graded as the
-    // model's own result.
+    // Empty answers that the baseline would retry are retried here too:
+    // - a turn with no text and no tool calls (empty_response), at any point;
+    // - a token-limit cutoff with no text before any web call. DeepSeek's
+    //   4096-token cap often runs out on reasoning in the first turn.
+    // A cutoff after research, or an empty answer from ignoring the tool
+    // budget, is graded as the model's own result, as before.
+    // noWebUsage tells the runner that nothing searched or fetched is lost
+    // with the discarded attempt, so the web counts stay exact.
+    const noWebUsage =
+      result.summary.searchAttempts + result.summary.fetchAttempts === 0;
     const retryableEmpty =
       !result.text.trim() &&
-      result.summary.searchAttempts + result.summary.fetchAttempts === 0 &&
-      (result.modelOutcome === "completed" ||
-        result.modelOutcome === "output_limit" ||
-        result.modelOutcome === "empty_response");
+      (result.modelOutcome === "empty_response" ||
+        (result.modelOutcome === "output_limit" && noWebUsage));
     if (retryableEmpty)
       journal({
         kind: "generation_discarded",
-        reason: "empty answer before any web call; the runner retries it",
+        reason: "empty answer; the runner retries it",
+        noWebUsage,
       });
     return {
       text: result.text,
       usage,
       openRouterGenerationId: ids.at(-1),
       retryableEmpty,
+      noWebUsage,
     };
   } catch (error) {
     let message = String(error);
@@ -178,7 +181,7 @@ export async function generateWithClientWeb(options: {
     }
     // Do not let the runner retry a paid tool loop that failed partway, or
     // grade an interrupted generation as a model failure. The journal retains
-    // evidence. (Empty answers before any web call are retried; see above.)
+    // evidence. (Empty answers are handled above, not here.)
     throw new InfrastructureError(
       `Client web generation failed; trace ${options.tracePath}: ${message}`,
     );

@@ -370,6 +370,24 @@ export function attachProviderObservabilityUsage({
     attempt.openRouterGenerationId ? [attempt.openRouterGenerationId] : [],
   );
 
+  // Every attempt came back empty before any web call: zero searches and
+  // fetches is the exact count, so record it rather than leave the eval
+  // without counters, which would make the run's web averages unknown.
+  const noWebCalls =
+    webResearch &&
+    usage === undefined &&
+    attempts.length > 0 &&
+    attempts.every((attempt) => attempt.noWebUsage);
+  const webResearchCounts = noWebCalls
+    ? {
+        webResearch: {
+          searchRequests: 0,
+          fetchRequests: 0,
+          countSource: "client-dispatched",
+        },
+      }
+    : {};
+
   return {
     inputTokens: usage?.inputTokens,
     inputTokenDetails: usage?.inputTokenDetails ?? {
@@ -387,6 +405,7 @@ export function attachProviderObservabilityUsage({
     cachedInputTokens: usage?.cachedInputTokens,
     raw: {
       ...raw,
+      ...webResearchCounts,
       requestSessionId: sessionId,
       ...(generationIds.length > 0
         ? {
@@ -462,11 +481,11 @@ export class Model {
         sessionId: request.sessionId,
         tracePath: request.webTracePath,
       });
-      // Match the baseline paths: no text before any web call is a provider
-      // failure the runner retries, not a model answer to grade.
+      // Match the baseline paths: an empty answer is a provider failure the
+      // runner retries, not a model answer to grade (see generateWithClientWeb).
       if (result.retryableEmpty)
         throw new EmptyProviderResponseError(result.openRouterGenerationId, {
-          noWebUsage: true,
+          noWebUsage: result.noWebUsage,
         });
       return {
         files: parseMarkdownResponse(result.text),
