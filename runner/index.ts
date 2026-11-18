@@ -744,7 +744,12 @@ async function processOneEval(
         } outcome=${providerAttempts[providerAttempts.length - 1].outcome}`,
       );
 
-      if (e instanceof WebResearchProviderError) {
+      if (
+        e instanceof WebResearchProviderError ||
+        (e instanceof EmptyProviderResponseError &&
+          isWebResearchExperiment(process.env.EVALS_EXPERIMENT) &&
+          !e.noWebUsage)
+      ) {
         logInfo(
           `[${evalPathStr}] Failed-attempt usage and charges are excluded from reported totals; consult the research trace.`,
         );
