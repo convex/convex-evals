@@ -28,9 +28,10 @@ options per question. It has its own benchmark version, linked to the coding
 benchmark, with a separate score and leaderboard. A correct choice does not establish that a model can write
 or debug a working Convex application.
 
-The accepted bank contains 108 questions covering 90 of the 112 coding evals.
+The accepted bank contains 108 questions covering 90 of the 124 coding evals.
 [decision-bank.json](decision-bank.json) records the included questions and the
-22 intentional omissions. Questions are averaged within each source eval, then
+34 omitted evals: 22 intentional omissions, plus 12 coding evals added after the
+bank was reviewed that have no questions yet. Questions are averaged within each source eval, then
 source evals receive equal weight. Invalid responses and provider failures count
 as incorrect; interrupted and filtered runs do not enter the leaderboard.
 Three matched option permutations are used by the hosted workflow. Unknown

@@ -1,0 +1,60 @@
+Expose order placement over HTTP for partner systems, reusing the mutation the app already calls.
+
+The app already has this schema and mutation. Write them to `convex/schema.ts` and `convex/orders.ts` exactly as given, and do not change them:
+```ts
+// convex/schema.ts
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  products: defineTable({
+    sku: v.string(),
+    stock: v.number(),
+  }).index("by_sku", ["sku"]),
+  orders: defineTable({
+    sku: v.string(),
+    quantity: v.number(),
+  }),
+});
+```
+
+```ts
+// convex/orders.ts
+import { ConvexError, v } from "convex/values";
+import { mutation } from "./_generated/server";
+
+export const placeOrder = mutation({
+  args: { sku: v.string(), quantity: v.number() },
+  handler: async (ctx, args) => {
+    if (!Number.isInteger(args.quantity) || args.quantity < 1) {
+      throw new ConvexError({ code: "INVALID_QUANTITY" });
+    }
+    const product = await ctx.db
+      .query("products")
+      .withIndex("by_sku", (q) => q.eq("sku", args.sku))
+      .unique();
+    if (product === null) {
+      throw new ConvexError({ code: "PRODUCT_NOT_FOUND", sku: args.sku });
+    }
+    if (product.stock < args.quantity) {
+      throw new ConvexError({ code: "OUT_OF_STOCK", available: product.stock });
+    }
+    await ctx.db.patch("products", product._id, {
+      stock: product.stock - args.quantity,
+    });
+    return await ctx.db.insert("orders", {
+      sku: args.sku,
+      quantity: args.quantity,
+    });
+  },
+});
+```
+
+In `convex/http.ts`, handle `POST /orders`. The request body is JSON `{ "sku": string, "quantity": number }`. Place the order by calling `placeOrder` with `ctx.runMutation`, and respond with a JSON body:
+- Success: status 201 with `{ "orderId": <the new order's ID> }`
+- The body is not valid JSON, is not a JSON object, has a `sku` that is not a string, or has a `quantity` that is not a number: status 400 with `{ "error": { "code": "INVALID_REQUEST" } }`, without calling `placeOrder`
+- When `placeOrder` fails, respond with its error payload as `error`, with status 400 for `INVALID_QUANTITY`, 404 for `PRODUCT_NOT_FOUND` and 409 for `OUT_OF_STOCK`. For example, a request for more than the 3 in stock gets status 409 with `{ "error": { "code": "OUT_OF_STOCK", "available": 3 } }`.
+
+Every response has the header `Content-Type: application/json`. Don't add any other Convex functions, public or internal: the route places orders only through `placeOrder`.
+
+The parsed request body and the `data` of a caught `ConvexError` are both typed `any`, and this project's lint rules reject reading fields of an `any` value, so narrow them (a type assertion is fine) before reading their fields.

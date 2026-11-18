@@ -1,0 +1,23 @@
+Build the cleanup job for abandoned uploads. While filling in a form, users upload a file straight to Convex file storage, and the file is only recorded in the `documents` table when they submit the form. Abandoned forms leave stored files that nothing references.
+
+Write this schema to `convex/schema.ts`:
+```ts
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  documents: defineTable({
+    title: v.string(),
+    fileId: v.id("_storage"),
+  }).index("by_fileId", ["fileId"]),
+});
+```
+
+Create an internal mutation `deleteOrphanedFiles` in `convex/index.ts` that:
+- Takes `{ uploadedBefore: number }`, a timestamp in milliseconds since the Unix epoch
+- Deletes every stored file that was uploaded before `uploadedBefore` and is not referenced by any `documents` row
+- Keeps every file uploaded at or after `uploadedBefore`, even if nothing references it yet, because its user may still be filling in the form
+- Never deletes a file that a document references
+- Returns the number of files it deleted
+
+The deployment never stores more than 500 files, so one call can process all of them. Documents can far outnumber files: there may be many thousands of them.

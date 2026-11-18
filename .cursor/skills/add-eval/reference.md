@@ -40,6 +40,20 @@ relative paths like `import { responseClient, addDocuments } from "../../../grad
 | `deleteAllDocuments` | `(adminClient, tables[]) => Promise<Record<string, number>>` | Clear all documents from the given tables. Use for test cleanup. |
 | `pollUntil` | `(predicate, { timeoutMs, intervalMs }) => Promise<void>` | Poll until the predicate returns true, or throw after `timeoutMs`. Use instead of fixed sleeps (pattern 11). |
 
+### File Storage
+
+These upload real files the way a browser does and inspect storage through the local backend's dashboard system functions, so a grader doesn't depend on the model's own queries to see what is stored. Failures in those system functions are reported as grader infrastructure failures, not model failures.
+
+| Helper | Signature | Description |
+|--------|-----------|-------------|
+| `uploadFile` | `(uploadUrl, body, contentType?) => Promise<string>` | POST a file to an upload URL and return its storage ID. Leaving out `contentType` with a `Uint8Array` body sends no `Content-Type` header, so Convex records none; a string body still gets `text/plain;charset=UTF-8` from fetch. |
+| `generateAdminUploadUrl` | `(adminClient) => Promise<string>` | An upload URL minted with admin rights, for files the model's code didn't upload. |
+| `listStoredFiles` | `(adminClient) => Promise<StoredFile[]>` | Every stored file, newest first, with `_id`, `_creationTime`, `contentType`, `sha256`, `size` and `url`. |
+| `deleteStoredFiles` | `(adminClient, storageIds) => Promise<void>` | Delete the given stored files, as the dashboard does. |
+| `deleteAllStoredFiles` | `(adminClient) => Promise<number>` | Delete every stored file, then check storage is empty. Use in `beforeEach` to isolate storage tests. |
+
+`listTable` can't read `_storage` ("System tables can only be accessed from db.system.query()"), so use `listStoredFiles` instead.
+
 ### Output Files
 
 | Helper | Signature | Description |

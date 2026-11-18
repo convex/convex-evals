@@ -1,0 +1,31 @@
+Build the retrieval step for a document Q&A feature. Each document is split into chunks, and each chunk has its own embedding. A search returns the best-matching documents, not chunks.
+
+Write this schema to `convex/schema.ts`:
+```ts
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  documents: defineTable({
+    title: v.string(),
+  }),
+  chunks: defineTable({
+    documentId: v.id("documents"),
+    text: v.string(),
+    embedding: v.array(v.float64()),
+  }).vectorIndex("by_embedding", {
+    vectorField: "embedding",
+    dimensions: 4,
+  }),
+});
+```
+
+Create a public action `searchDocuments` in `convex/index.ts` that:
+- Takes arguments `{ embedding: number[], limit: number }`. Callers always pass an integer `limit` between 1 and 20.
+- Uses the vector index to rank documents by their best-matching chunk: a document's score is the similarity score of its chunk that is most similar to `embedding`
+- Returns the `limit` highest-scoring documents, ordered from highest to lowest score, as an array of objects with exactly these fields: `{ documentId: Id<"documents">, title: string, bestChunk: string, score: number }`, where `bestChunk` is the text of the document's most similar chunk and `score` is that chunk's similarity score
+- Includes each document at most once
+
+Every document has at most 10 chunks. When at least `limit` documents have chunks, the search must return exactly `limit` documents, even when the closest chunks all belong to a few documents.
+
+Load chunks and documents only by the IDs the search returns; don't query the `chunks` table any other way. Only `searchDocuments` may be callable by clients, so make any helper functions internal.

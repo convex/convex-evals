@@ -3,6 +3,7 @@ import { expect } from "vitest";
 import ts from "typescript";
 export { getLatestOutputProjectDir, readOutputFile } from "./outputDir.js";
 export { pollUntil } from "./pollUntil.js";
+import { failGraderInfrastructure } from "./infrastructure.js";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
@@ -312,4 +313,126 @@ export function containsCollectCall(
 
   visit(sourceFile);
   return found;
+}
+
+/**
+ * File storage helpers. Graders upload real files the way a browser does and
+ * inspect storage through the dashboard's system functions, so checks don't
+ * depend on the model's own queries to report what is stored. A failure in
+ * those system functions is the grader's problem, not the model's, so it is
+ * reported as an infrastructure failure.
+ */
+export type StoredFile = {
+  _id: string;
+  _creationTime: number;
+  contentType?: string | null;
+  sha256: string;
+  size: number;
+  url: string | null;
+};
+
+/**
+ * POST a file to an upload URL like a browser would and return its storage ID.
+ * Without `contentType` no Content-Type header is set for a `Uint8Array` body,
+ * so Convex records none; for a string body fetch still sends
+ * `text/plain;charset=UTF-8`.
+ */
+export async function uploadFile(
+  uploadUrl: string,
+  body: Uint8Array | string,
+  contentType?: string,
+): Promise<string> {
+  const response = await fetch(uploadUrl, {
+    method: "POST",
+    headers: contentType ? { "Content-Type": contentType } : {},
+    body,
+  });
+  if (!response.ok) {
+    throw new Error(
+      `Upload failed with status ${response.status}: ${await response.text()}`,
+    );
+  }
+  const { storageId } = (await response.json()) as { storageId: string };
+  return storageId;
+}
+
+/** An upload URL minted with admin rights, for files the model's code didn't upload. */
+export async function generateAdminUploadUrl(adminClient: any): Promise<string> {
+  try {
+    return await adminClient.mutation(
+      "_system/frontend/fileStorageV2:generateUploadUrl",
+      {},
+    );
+  } catch (error) {
+    failGraderInfrastructure(
+      `Could not mint an upload URL: ${String(error)}`,
+      "file_storage",
+    );
+  }
+}
+
+/** Every file in the deployment's file storage, newest first. */
+export async function listStoredFiles(adminClient: any): Promise<StoredFile[]> {
+  const files: StoredFile[] = [];
+  let cursor: string | null = null;
+  try {
+    for (;;) {
+      const result: {
+        page: StoredFile[];
+        isDone: boolean;
+        continueCursor: string;
+      } = await adminClient.query(
+        "_system/frontend/fileStorageV2:fileMetadata",
+        { paginationOpts: { numItems: 100, cursor } },
+      );
+      files.push(...result.page);
+      if (result.isDone) return files;
+      cursor = result.continueCursor;
+    }
+  } catch (error) {
+    failGraderInfrastructure(
+      `Could not list stored files: ${String(error)}`,
+      "file_storage",
+    );
+  }
+}
+
+/** Delete the given stored files, as the dashboard does. */
+export async function deleteStoredFiles(
+  adminClient: any,
+  storageIds: string[],
+): Promise<void> {
+  await adminClient.mutation("_system/frontend/fileStorageV2:deleteFiles", {
+    storageIds,
+  });
+}
+
+/** Delete every stored file, so storage tests start from a known state. */
+export async function deleteAllStoredFiles(adminClient: any): Promise<number> {
+  const files = await listStoredFiles(adminClient);
+  for (let i = 0; i < files.length; i += 100) {
+    const storageIds = files.slice(i, i + 100).map((file) => file._id);
+    try {
+      await deleteStoredFiles(adminClient, storageIds);
+    } catch {
+      // One file removed since the listing fails the whole batch, so delete
+      // this batch one at a time. The check below catches anything left.
+      for (const storageId of storageIds) {
+        await adminClient
+          .mutation("_system/frontend/fileStorageV2:deleteFile", { storageId })
+          .catch(() => undefined);
+      }
+    }
+  }
+  // Anything left means the backend didn't delete it. This is reported as
+  // infrastructure, so in the rare case a model's own scheduled work stores a
+  // file after the listing, the eval goes unscored rather than failed.
+  const left = await listStoredFiles(adminClient);
+  if (left.length > 0) {
+    failGraderInfrastructure(
+      `Could not clear file storage: ${left.length} files remain`,
+      "file_storage",
+    );
+  }
+  return files.length;
 }

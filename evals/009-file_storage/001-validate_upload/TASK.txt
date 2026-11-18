@@ -1,0 +1,31 @@
+Build the backend for attaching a photo to a marketplace listing. The browser uploads the image straight to Convex file storage: it calls `generateUploadUrl`, POSTs the file to that URL with the file's `Content-Type` header, and then calls `attachPhoto` with the returned storage ID.
+
+Only PNG and JPEG images of at most 1 MiB (1,048,576 bytes) may be attached. Anyone can POST any file to an upload URL, so the check must use the content type and size that Convex recorded for the uploaded file.
+
+Write this schema to `convex/schema.ts`:
+```ts
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  listings: defineTable({
+    title: v.string(),
+    photoStorageId: v.optional(v.id("_storage")),
+  }),
+});
+```
+
+Create these functions in `convex/index.ts`:
+
+1. A mutation `generateUploadUrl` that takes no arguments and returns an upload URL as a string.
+
+2. A mutation `attachPhoto` that takes `{ listingId: Id<"listings">, storageId: Id<"_storage"> }` and returns one of:
+   - `{ ok: true }` after setting the listing's `photoStorageId` to `storageId`
+   - `{ ok: false, reason: "unsupported_type" }` if the file's content type is anything other than `image/png` or `image/jpeg`. This check comes first.
+   - `{ ok: false, reason: "too_large" }` if the file is larger than 1 MiB
+
+   When a file is rejected, the listing must be left unchanged and the file must be deleted from storage, so rejected uploads don't accumulate.
+
+   Throw an error if the listing does not exist or the file is not in storage.
+
+Only these two functions may be callable by clients, so make any helper functions internal.

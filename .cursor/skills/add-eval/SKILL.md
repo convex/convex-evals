@@ -30,6 +30,9 @@ List the existing categories by scanning `evals/` top-level directories, then pr
 | `005-idioms` | File organization, internal functions, batch patterns |
 | `006-clients` | useQuery, useMutation, usePaginatedQuery |
 | `007-components` | Components: usage evals wiring a named component, selection evals choosing one, local components, function handles |
+| `008-vector_search` | Vector indexes, filtered similarity search, hydrating hits, chunked retrieval |
+| `009-file_storage` | Upload URLs, `_storage` metadata, validating, serving, sharing and cleaning up stored files |
+| `010-errors` | ConvexError payloads, failure handling around rolled-back mutations, mapping errors at HTTP boundaries, background job failures |
 
 - If the concept **clearly fits** one category, propose it with a brief justification.
 - If it's **ambiguous** (e.g. "scheduled mutations" could be fundamentals or mutations), stop and ask the user. Present the candidate categories with reasoning for each.
@@ -180,6 +183,8 @@ After the user approves the design, implement:
    bun run typecheck
    ```
 
+7. **Account for the eval in the decision benchmark.** `decision-bank.json` must list every coding eval, so a new eval without `questions.json` needs an `omittedSources` entry, and `codingEvalCount` goes up by one. Then re-pin `promotionCoverageSha256` in `verification/decisions/manifest.json` to the new file's SHA-256 (`node verification/decisions/verify.mjs` fails until you do), update the eval and omission counts in README.md "Decision models", and update the pinned coding identity and eval count in `runner/decisions/benchmarkIdentity.test.ts` once the eval's files are final. The manifest is part of the decision benchmark's identity, so merging any new eval also needs a decision mint, not just a coding one. Say so in the PR.
+
 ## Step 4: Validate the Answer
 
 First run canonical answer validation for the new eval:
@@ -302,6 +307,7 @@ This is essential for distinguishing "model wrote bad code" from "model's code i
 - [ ] grader.test.ts written
 - [ ] `bun run typecheck` passes
 - [ ] `bun run validate:answers` passes for the new eval
+- [ ] Eval recorded in `decision-bank.json`, coverage hash and README counts updated, coding identity re-pinned
 - [ ] Smoke test passes for at least one model
 - [ ] Cost estimate approved before any model run
 - [ ] Calibrated on a representative set of models in both conditions, expanded if needed
