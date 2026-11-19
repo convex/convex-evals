@@ -215,22 +215,33 @@ export function createDecisionReporter(
     if (storedLength > maxStoredBytes) {
       throw new Error("Hosted decision evidence exceeds its upload limit");
     }
-    const url = await call("decisionAdmin:generateUploadUrl", {
-      token: target.token,
-      runId,
-    });
-    if (typeof url !== "string") throw new Error("Invalid evidence upload URL");
     const digest = sha256(bytes);
     if (!evidenceDirectory) throw new Error("Evidence directory unavailable");
     writeFileSync(join(evidenceDirectory, `${digest}.${gzip ? "json.gz" : "json"}`), bytes, {
       mode: 0o600,
     });
-    const storageId = await transport.upload(
-      url,
-      bytes,
-      gzip ? "application/gzip" : "application/json",
-    );
-    return { storageId, sha256: digest };
+    // A single failed upload (a storage 500, say) used to interrupt the whole
+    // run. The bytes and digest are fixed, so a retry can only store the same
+    // evidence again, and each try gets a fresh upload URL.
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const url = await call("decisionAdmin:generateUploadUrl", {
+          token: target.token,
+          runId,
+        });
+        if (typeof url !== "string")
+          throw new Error("Invalid evidence upload URL");
+        const storageId = await transport.upload(
+          url,
+          bytes,
+          gzip ? "application/gzip" : "application/json",
+        );
+        return { storageId, sha256: digest };
+      } catch (error) {
+        if (attempt === 2) throw error;
+        await retryDelay(1000 * (attempt + 1));
+      }
+    }
   };
   return {
     metadata: target.metadata,

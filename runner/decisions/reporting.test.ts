@@ -229,6 +229,97 @@ it("does not call providers if the hosted run cannot be established", async () =
   expect(providerCalls).toBe(0);
 });
 
+function answeringFetcher(): typeof fetch {
+  return Object.assign(
+    async () =>
+      Response.json({
+        model: "fixture-returned",
+        choices: [
+          { finish_reason: "stop", message: { content: '{"choice":"A"}' } },
+        ],
+        usage: { cost: 0 },
+      }),
+    { preconnect: () => undefined },
+  );
+}
+
+it("retries a failed evidence upload with a fresh upload URL", async () => {
+  let issuedUrls = 0;
+  const uploads: string[] = [];
+  const delays: number[] = [];
+  const transport: DecisionTransport = {
+    async action(name) {
+      if (name === "decisionAdmin:start") return { runId: "run-fixture" };
+      if (name === "decisionAdmin:generateUploadUrl")
+        return `https://upload.invalid/${++issuedUrls}`;
+      if (name === "decisionAdmin:finish") return { status: "completed" };
+      return null;
+    },
+    async upload(url) {
+      uploads.push(url);
+      if (uploads.length === 1)
+        throw new Error("Evidence upload failed (HTTP 500)");
+      return `storage-${uploads.length}`;
+    },
+  };
+  const result = await runDecisions(
+    fixture(),
+    { fetcher: answeringFetcher() },
+    createDecisionReporter(
+      decisionReportingTarget(environment, commit)!,
+      "fixture",
+      transport,
+      async (ms) => {
+        delays.push(ms);
+      },
+    ),
+  );
+  expect(result.summary?.complete).toBe(true);
+  // The question's evidence fails once and goes up on a new URL, then the
+  // run's evidence goes up first time.
+  expect(uploads).toEqual([
+    "https://upload.invalid/1",
+    "https://upload.invalid/2",
+    "https://upload.invalid/3",
+  ]);
+  expect(delays).toEqual([1000]);
+});
+
+it("gives up on evidence after three failed uploads", async () => {
+  let uploads = 0;
+  const delays: number[] = [];
+  const transport: DecisionTransport = {
+    async action(name) {
+      if (name === "decisionAdmin:start") return { runId: "run-fixture" };
+      if (name === "decisionAdmin:generateUploadUrl")
+        return "https://upload.invalid";
+      return { status: "interrupted" };
+    },
+    async upload() {
+      uploads++;
+      throw new Error("Evidence upload failed (HTTP 500)");
+    },
+  };
+  const failure = await rejection(
+    runDecisions(
+      fixture(),
+      { fetcher: answeringFetcher() },
+      createDecisionReporter(
+        decisionReportingTarget(environment, commit)!,
+        "fixture",
+        transport,
+        async (ms) => {
+          delays.push(ms);
+        },
+      ),
+    ),
+  );
+  expect(failure.message).toContain("Evidence upload failed (HTTP 500)");
+  // Three tries for the question's evidence, then three for the run's.
+  expect(uploads).toBe(6);
+  expect(delays).toEqual([1000, 2000, 1000, 2000]);
+});
+
 it.each(Object.values(NATIVE_DECISION_MODELS))("records $model with unused chat settings null", async (native) => {
   const options = fixture();
   options.config.model = native.model;
