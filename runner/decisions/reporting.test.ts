@@ -10,6 +10,7 @@ import { runDecisions, type DecisionRunOptions } from "./run.js";
 import {
   createDecisionReporter,
   compactDecisionJournalRow,
+  decisionTransport,
   decisionReportingTarget,
   DECISION_DEVELOPMENT_URL,
   DECISION_PRODUCTION_URL,
@@ -245,18 +246,20 @@ function answeringFetcher(): typeof fetch {
 
 it("retries a failed evidence upload with a fresh upload URL", async () => {
   let issuedUrls = 0;
-  const uploads: string[] = [];
+  const uploads: Array<{ url: string; text: string }> = [];
+  const recorded: unknown[] = [];
   const delays: number[] = [];
   const transport: DecisionTransport = {
-    async action(name) {
+    async action(name, args) {
       if (name === "decisionAdmin:start") return { runId: "run-fixture" };
       if (name === "decisionAdmin:generateUploadUrl")
         return `https://upload.invalid/${++issuedUrls}`;
+      if (name === "decisionAdmin:record") recorded.push(...(args.items as unknown[]));
       if (name === "decisionAdmin:finish") return { status: "completed" };
       return null;
     },
-    async upload(url) {
-      uploads.push(url);
+    async upload(url, bytes) {
+      uploads.push({ url, text: uploadedText(bytes) });
       if (uploads.length === 1)
         throw new Error("Evidence upload failed (HTTP 500)");
       return `storage-${uploads.length}`;
@@ -275,29 +278,49 @@ it("retries a failed evidence upload with a fresh upload URL", async () => {
     ),
   );
   expect(result.summary?.complete).toBe(true);
-  // The question's evidence fails once and goes up on a new URL, then the
-  // run's evidence goes up first time.
-  expect(uploads).toEqual([
+  // The question's evidence fails once and goes up again on a new URL, then
+  // the run's evidence goes up first time.
+  expect(uploads.map(({ url }) => url)).toEqual([
     "https://upload.invalid/1",
     "https://upload.invalid/2",
     "https://upload.invalid/3",
   ]);
+  expect(uploads[1].text).toBe(uploads[0].text);
+  expect(recorded).toEqual([
+    expect.objectContaining({
+      evidence: {
+        storageId: "storage-2",
+        sha256: createHash("sha256").update(uploads[1].text).digest("hex"),
+      },
+    }),
+  ]);
   expect(delays).toEqual([1000]);
 });
 
-it("gives up on evidence after three failed uploads", async () => {
-  let uploads = 0;
+it("finishes the run as interrupted when a question's evidence fails three uploads", async () => {
+  let questionUploads = 0;
+  let finishes = 0;
+  let runEvidence: Record<string, unknown> | undefined;
   const delays: number[] = [];
   const transport: DecisionTransport = {
     async action(name) {
       if (name === "decisionAdmin:start") return { runId: "run-fixture" };
       if (name === "decisionAdmin:generateUploadUrl")
         return "https://upload.invalid";
-      return { status: "interrupted" };
+      if (name === "decisionAdmin:finish") {
+        finishes++;
+        return { status: "interrupted" };
+      }
+      return null;
     },
-    async upload() {
-      uploads++;
-      throw new Error("Evidence upload failed (HTTP 500)");
+    async upload(_url, bytes) {
+      const evidence = uploadedJson(bytes);
+      if (evidence.kind === "decision-question") {
+        questionUploads++;
+        throw new Error("Evidence upload failed (HTTP 500)");
+      }
+      runEvidence = evidence;
+      return "storage-run";
     },
   };
   const failure = await rejection(
@@ -314,10 +337,29 @@ it("gives up on evidence after three failed uploads", async () => {
       ),
     ),
   );
-  expect(failure.message).toContain("Evidence upload failed (HTTP 500)");
-  // Three tries for the question's evidence, then three for the run's.
-  expect(uploads).toBe(6);
-  expect(delays).toEqual([1000, 2000, 1000, 2000]);
+  expect(failure.message).toContain("Hosted decision run is interrupted");
+  expect(questionUploads).toBe(3);
+  expect(delays).toEqual([1000, 2000]);
+  expect(finishes).toBe(1);
+  // The backend takes the interrupted run's failure reason from this status.
+  expect(runEvidence?.status).toMatchObject({
+    kind: "incomplete",
+    stopReason: "Evidence upload failed (HTTP 500)",
+  });
+});
+
+it("times out an evidence upload that never gets an answer", async () => {
+  const server = Bun.serve({
+    port: 0,
+    fetch: () => new Promise<Response>(() => {}),
+  });
+  try {
+    const transport = await decisionTransport(DECISION_DEVELOPMENT_URL, 50);
+    const failure = await rejection(transport.upload(server.url.href, "{}"));
+    expect(failure.name).toBe("TimeoutError");
+  } finally {
+    await server.stop(true);
+  }
 });
 
 it.each(Object.values(NATIVE_DECISION_MODELS))("records $model with unused chat settings null", async (native) => {

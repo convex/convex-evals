@@ -146,8 +146,14 @@ export function encodeDecisionRunEvidence(value: unknown): Uint8Array {
   return gzipSync(`${JSON.stringify(value)}\n`, { level: 9 });
 }
 
+// Evidence blobs are at most 8 MB and normally upload in well under a second,
+// so this only trips on a stalled upload, which then gets retried like any
+// other failed one instead of holding the job until GitHub kills it.
+const EVIDENCE_UPLOAD_TIMEOUT_MS = 60_000;
+
 export async function decisionTransport(
   url: string,
+  uploadTimeoutMs = EVIDENCE_UPLOAD_TIMEOUT_MS,
 ): Promise<DecisionTransport> {
   // Delayed construction keeps disabled/file-only paths entirely offline.
   const { ConvexHttpClient } = await import("convex/browser");
@@ -163,6 +169,7 @@ export async function decisionTransport(
         method: "POST",
         headers: { "Content-Type": contentType },
         body: bytes,
+        signal: AbortSignal.timeout(uploadTimeoutMs),
       });
       if (!response.ok)
         throw new Error(`Evidence upload failed (HTTP ${response.status})`);
