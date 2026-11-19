@@ -1,6 +1,6 @@
 # Decision model cohort
 
-The decision benchmark uses eight native decision models and four LLM references.
+The decision benchmark uses nine native decision models and four LLM references.
 This keeps the comparison focused on models that return typed choices with
 probabilities, while retaining a few familiar quality and cost references.
 
@@ -19,6 +19,7 @@ automatically run models or guarantee a score exists on a newly minted version.
 | `decider12`          | `perplexity/pplx-decider-v1.2`   | Decisions |
 | `solardecideflash`   | `upstage/solar-decide-flash`     | Decisions |
 | `classify1`          | `scaledown/classify-1`           | Decisions |
+| `geminidecision1`    | `google/gemini-decision-1`       | Decisions |
 | `luna6`              | `openai/gpt-6-luna`              | Chat      |
 | `sol61`              | `openai/gpt-6.1-sol`             | Chat      |
 | `opus55`             | `anthropic/claude-opus-5.5`      | Chat      |
@@ -26,15 +27,15 @@ automatically run models or guarantee a score exists on a newly minted version.
 
 The native IDs were checked against OpenRouter's
 [decision catalog](https://openrouter.ai/api/v1/models?output_modalities=decisions)
-on 14 October 2026, and Decider V1.2 on 19 November 2026. Catalog presence
-confirms the advertised API and pricing, not a successful inference call. Each
-model also returned valid choice distributions in a local two-question smoke
-test on the day it was checked. These are integration checks, not model-quality
-comparisons. Classify-1 requires the shared context to be serialized as a JSON
-string because ScaleDown does not accept the arbitrary state object used by the
-other models. Retest new model additions locally, with spend approval, before
-hosted baseline runs. Use paid, pinned IDs rather than free variants or moving
-latest aliases for comparable runs.
+on 14 October 2026, and Decider V1.2 and Gemini Decision 1 on 19 November 2026.
+Catalog presence confirms the advertised API and pricing, not a successful
+inference call. Each model also returned valid choice distributions in a local
+two-question smoke test on the day it was checked. These are integration checks,
+not model-quality comparisons. Classify-1 requires the shared context to be
+serialized as a JSON string because ScaleDown does not accept the arbitrary
+state object used by the other models. Retest new model additions locally, with
+spend approval, before hosted baseline runs. Use paid, pinned IDs rather than
+free variants or moving latest aliases for comparable runs.
 
 Two native models left OpenRouter in November 2026. On 18 November, Inception's
 Mercury Decide and Perplexity's Decider V1.1 27B had no endpoints, and their runs

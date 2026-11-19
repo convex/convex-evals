@@ -68,6 +68,11 @@ export const NATIVE_DECISION_MODELS = {
     provider: "openrouter",
     model: "scaledown/classify-1",
   },
+  geminidecision1: {
+    formattedName: "Google: Gemini Decision 1",
+    provider: "openrouter",
+    model: "google/gemini-decision-1",
+  },
 } as const;
 
 // Native models that left OpenRouter. They're out of the cohort, but their runs
