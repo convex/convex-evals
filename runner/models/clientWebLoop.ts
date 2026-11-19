@@ -15,6 +15,24 @@ export type ClientWebOutcome =
   | "tool_budget_exhausted"
   | "invalid_tool_calls";
 
+// Covers the entire model/tool loop, not each individual turn.
+const LOOP_TIMEOUT_MS = 300_000;
+
+/** The loop ran out of time. The baseline retries timeouts, so the runner
+ * retries this too rather than failing the whole run. */
+export class ClientWebTimeoutError extends Error {
+  constructor(
+    message: string,
+    /** No search or fetch was made, so dropping the attempt hides no web
+     * usage (see EmptyProviderResponseError). */
+    readonly noWebUsage: boolean,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+    this.name = "ClientWebTimeoutError";
+  }
+}
+
 export async function runClientWebLoop(options: {
   model: string;
   purpose?: "smoke" | "eval-generation";
@@ -28,8 +46,7 @@ export async function runClientWebLoop(options: {
   modelFetch?: (url: string, init: RequestInit) => Promise<Response>;
   toolFetch?: (url: string, init: RequestInit) => Promise<Response>;
 }) {
-  // Five minutes covers the entire model/tool loop, not each individual turn.
-  const signal = AbortSignal.timeout(300000);
+  const signal = AbortSignal.timeout(LOOP_TIMEOUT_MS);
   const messages: Record<string, unknown>[] = [
     {
       role: "system",
@@ -202,12 +219,22 @@ export async function runClientWebLoop(options: {
       }
     }
     throw new Error("Model turn budget exhausted");
-  } catch (error) {
+  } catch (caught) {
+    const summary = tools.summary();
+    // Whatever was in flight when the time ran out (a model request, a body
+    // read) throws its own error. Report the timeout, not that.
+    const error = signal.aborted
+      ? new ClientWebTimeoutError(
+          `Web loop timed out after ${LOOP_TIMEOUT_MS / 1000}s`,
+          summary.searchAttempts + summary.fetchAttempts === 0,
+          { cause: caught },
+        )
+      : caught;
     try {
       options.journal({
         kind: "pilot_failed",
         error: String(error),
-        summary: tools.summary(),
+        summary,
         usage,
       });
     } catch {

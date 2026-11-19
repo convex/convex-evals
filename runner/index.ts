@@ -50,6 +50,7 @@ import {
   validateExperimentConfiguration,
 } from "./experiments.js";
 import { WebResearchProviderError } from "./models/webResearch.js";
+import { ClientWebTimeoutError } from "./models/clientWebLoop.js";
 import { requireWebResearchApiKey } from "./models/webResearchTools.js";
 import { computeBenchmarkDefinition } from "./benchmark.js";
 import {
@@ -111,7 +112,7 @@ const ALL_MODELS_KEYWORD = "all";
 
 export const MISSING_MODELS_MESSAGE =
   "MODELS is not set. Set MODELS to comma-separated OpenRouter slugs " +
-  '(e.g. MODELS=openai/gpt-5), or MODELS=all to run every curated model.';
+  "(e.g. MODELS=openai/gpt-5), or MODELS=all to run every curated model.";
 
 /**
  * Parse the MODELS env var. There is deliberately no default: a full pass
@@ -730,7 +731,9 @@ async function processOneEval(
             : e instanceof WebResearchProviderError
               ? e.generationId
               : undefined,
-        ...(e instanceof EmptyProviderResponseError && e.noWebUsage
+        ...((e instanceof EmptyProviderResponseError ||
+          e instanceof ClientWebTimeoutError) &&
+        e.noWebUsage
           ? { noWebUsage: true }
           : {}),
       });
@@ -748,7 +751,8 @@ async function processOneEval(
         e instanceof WebResearchProviderError ||
         (e instanceof EmptyProviderResponseError &&
           isWebResearchExperiment(process.env.EVALS_EXPERIMENT) &&
-          !e.noWebUsage)
+          !e.noWebUsage) ||
+        (e instanceof ClientWebTimeoutError && !e.noWebUsage)
       ) {
         logInfo(
           `[${evalPathStr}] Failed-attempt usage and charges are excluded from reported totals; consult the research trace.`,
@@ -902,9 +906,10 @@ function isRateLimitError(errorStr: string): boolean {
 }
 
 /** Detect empty/capacity/network failures that are safe to retry. */
-function isTransientProviderError(error: unknown): boolean {
+export function isTransientProviderError(error: unknown): boolean {
   if (error instanceof WebResearchProviderError) return error.canRetry(0, 1);
   if (error instanceof EmptyProviderResponseError) return true;
+  if (error instanceof ClientWebTimeoutError) return true;
   const lower = String(error).toLowerCase();
   return (
     isRateLimitError(lower) ||

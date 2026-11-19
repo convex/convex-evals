@@ -5,12 +5,15 @@ import {
   MISSING_MODELS_MESSAGE,
   buildEvalResult,
   getProviderFailureRunReason,
+  isTransientProviderError,
   MAX_PROVIDER_FAILURE_SHARE,
   MIN_PROVIDER_FAILURES_TO_INVALIDATE,
   parseModelNames,
   runEvalsForModel,
 } from "./index.js";
 import type { EvalIndividualResult } from "./reporting.js";
+import { InfrastructureError } from "./convexBackend.js";
+import { ClientWebTimeoutError } from "./models/clientWebLoop.js";
 
 /** Run the CLI entrypoint with a controlled environment. No network is used. */
 async function runCli(
@@ -333,5 +336,20 @@ describe("getProviderFailureRunReason", () => {
       getProviderFailureRunReason(results({ passed: 10, modelFailures: 90 })),
     ).toBeNull();
     expect(getProviderFailureRunReason([])).toBeNull();
+  });
+});
+
+describe("isTransientProviderError", () => {
+  it("retries a web loop timeout, like a baseline timeout", () => {
+    expect(
+      isTransientProviderError(new ClientWebTimeoutError("timed out", true)),
+    ).toBe(true);
+  });
+  it("still treats other web loop failures as infrastructure", () => {
+    expect(
+      isTransientProviderError(
+        new InfrastructureError("Client web generation failed: bad shape"),
+      ),
+    ).toBe(false);
   });
 });

@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { EmptyProviderResponseError, Model } from "./models/modelCodegen";
 import { resolveModelDefaults, SYSTEM_PROMPT } from "./models/index";
 import { validateClientWebRun } from "./models/clientWebResearch";
+import { ClientWebTimeoutError } from "./models/clientWebLoop";
 import { InfrastructureError } from "./convexBackend";
 import {
   computeWebUsage,
@@ -452,3 +453,97 @@ test("provider failure aborts as infrastructure and redacts credentials", async 
     "or-test-secret",
   );
 });
+
+// A model that hadn't answered when the five-minute loop limit ran out used to
+// abort the whole run (11 of 40 web runs in Nov 2026). The baseline retries
+// timeouts, so this is now a retryable error, not an InfrastructureError.
+test.each([
+  ["before any web call", false, true],
+  ["after a web search", true, false],
+])(
+  "a loop timeout %s is retryable",
+  async (_label, searchFirst, noWebUsage) => {
+    const loopLimit = new AbortController();
+    const realTimeout = AbortSignal.timeout.bind(AbortSignal);
+    AbortSignal.timeout = (ms: number) =>
+      ms === 300_000 ? loopLimit.signal : realTimeout(ms);
+    let turn = 0;
+    globalThis.fetch = Object.assign(
+      async (url: string | URL | Request, init?: RequestInit) => {
+        const requestUrl =
+          typeof url === "string"
+            ? url
+            : url instanceof URL
+              ? url.href
+              : url.url;
+        if (requestUrl.includes("api.exa.ai"))
+          return Response.json({
+            requestId: "exa-1",
+            results: [],
+            costDollars: { total: 0.007 },
+          });
+        turn++;
+        if (searchFirst && turn === 1)
+          return Response.json({
+            id: "gen-1",
+            choices: [
+              {
+                finish_reason: "tool_calls",
+                message: {
+                  role: "assistant",
+                  content: null,
+                  tool_calls: [
+                    {
+                      id: "s1",
+                      type: "function",
+                      function: {
+                        name: "web_search",
+                        arguments: '{"query":"Convex"}',
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          });
+        // A slow model: the request hangs until the loop limit fires.
+        const signal = init?.signal;
+        if (!signal) throw new Error("Expected the loop's abort signal");
+        setTimeout(
+          () =>
+            loopLimit.abort(
+              new DOMException("The operation timed out.", "TimeoutError"),
+            ),
+          5,
+        );
+        return await new Promise<Response>((_, reject) =>
+          signal.addEventListener("abort", () =>
+            reject(signal.reason as Error),
+          ),
+        );
+      },
+      { preconnect: fetchBefore.preconnect },
+    ) as typeof fetch;
+    try {
+      const error = await new Model(
+        "or-test-secret",
+        resolveModelDefaults("deepseek/deepseek-v4-pro"),
+      )
+        .generate("task", {
+          sessionId: "s",
+          webTracePath: join(dir, "trace.jsonl"),
+        })
+        .catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(ClientWebTimeoutError);
+      expect(error).not.toBeInstanceOf(InfrastructureError);
+      expect(error).toMatchObject({ noWebUsage });
+      expect((error as Error).message).toContain("timed out");
+      expect((error as Error).message).toContain(join(dir, "trace.jsonl"));
+      const trace = readFileSync(join(dir, "trace.jsonl"), "utf8");
+      expect(trace).toContain("Web loop timed out after 300s");
+      expect(trace).not.toContain("or-test-secret");
+    } finally {
+      AbortSignal.timeout = realTimeout;
+    }
+  },
+);
