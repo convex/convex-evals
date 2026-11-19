@@ -356,7 +356,8 @@ it("times out an evidence upload that never gets an answer", async () => {
   try {
     const transport = await decisionTransport(DECISION_DEVELOPMENT_URL, 50);
     const failure = await rejection(transport.upload(server.url.href, "{}"));
-    expect(failure.name).toBe("TimeoutError");
+    expect(failure.message).toBe("Evidence upload timed out after 50 ms");
+    expect((failure.cause as Error).name).toBe("TimeoutError");
   } finally {
     await server.stop(true);
   }

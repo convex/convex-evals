@@ -165,18 +165,29 @@ export async function decisionTransport(
         args,
       ) as Promise<unknown>,
     async upload(uploadUrl, bytes, contentType = "application/json") {
-      const response = await fetch(uploadUrl, {
-        method: "POST",
-        headers: { "Content-Type": contentType },
-        body: bytes,
-        signal: AbortSignal.timeout(uploadTimeoutMs),
-      });
-      if (!response.ok)
-        throw new Error(`Evidence upload failed (HTTP ${response.status})`);
-      const value = (await response.json()) as { storageId?: unknown };
-      if (typeof value.storageId !== "string")
-        throw new Error("Evidence upload returned no storage ID");
-      return value.storageId;
+      try {
+        const response = await fetch(uploadUrl, {
+          method: "POST",
+          headers: { "Content-Type": contentType },
+          body: bytes,
+          signal: AbortSignal.timeout(uploadTimeoutMs),
+        });
+        if (!response.ok)
+          throw new Error(`Evidence upload failed (HTTP ${response.status})`);
+        const value = (await response.json()) as { storageId?: unknown };
+        if (typeof value.storageId !== "string")
+          throw new Error("Evidence upload returned no storage ID");
+        return value.storageId;
+      } catch (error) {
+        // The bare error only says "The operation timed out.", and this message
+        // becomes the run's failure reason if every try stalls.
+        if (error instanceof Error && error.name === "TimeoutError")
+          throw new Error(
+            `Evidence upload timed out after ${uploadTimeoutMs} ms`,
+            { cause: error },
+          );
+        throw error;
+      }
     },
   };
 }
@@ -246,6 +257,9 @@ export function createDecisionReporter(
         return { storageId, sha256: digest };
       } catch (error) {
         if (attempt === 2) throw error;
+        console.warn(
+          `Evidence upload attempt ${attempt + 1} of 3 failed (${error instanceof Error ? error.message : String(error)}), retrying`,
+        );
         await retryDelay(1000 * (attempt + 1));
       }
     }
