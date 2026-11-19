@@ -349,17 +349,22 @@ it("finishes the run as interrupted when a question's evidence fails three uploa
 });
 
 it("times out an evidence upload that never gets an answer", async () => {
-  const server = Bun.serve({
+  // A raw socket that takes the request and never answers. Not Bun.serve: under
+  // Bun 1.3.8's test runner, a fetch held by its handler never aborts.
+  const server = Bun.listen({
+    hostname: "127.0.0.1",
     port: 0,
-    fetch: () => new Promise<Response>(() => {}),
+    socket: { data() {} },
   });
   try {
     const transport = await decisionTransport(DECISION_DEVELOPMENT_URL, 50);
-    const failure = await rejection(transport.upload(server.url.href, "{}"));
+    const failure = await rejection(
+      transport.upload(`http://127.0.0.1:${server.port}/`, "{}"),
+    );
     expect(failure.message).toBe("Evidence upload timed out after 50 ms");
     expect((failure.cause as Error).name).toBe("TimeoutError");
   } finally {
-    await server.stop(true);
+    server.stop(true);
   }
 });
 
