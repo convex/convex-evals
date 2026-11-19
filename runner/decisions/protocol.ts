@@ -73,6 +73,11 @@ export const NATIVE_DECISION_MODELS = {
     provider: "openrouter",
     model: "google/gemini-decision-1",
   },
+  luna6decisions: {
+    formattedName: "OpenAI: GPT-6 Luna Decisions",
+    provider: "openrouter",
+    model: "openai/gpt-6-luna-decisions",
+  },
 } as const;
 
 // Native models that left OpenRouter. They're out of the cohort, but their runs
