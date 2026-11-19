@@ -4,6 +4,9 @@ on:
   # Also validate the strict-stage PR while it is stacked on compatibility.
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Typecheck & Tests
@@ -34,6 +37,11 @@ jobs:
         run: bun run typecheck
 
       - name: Run tests
+        env:
+          # The backend tests look up Convex backend releases on the GitHub API.
+          # Anonymous lookups share a 60 an hour limit with everything else on
+          # the runner's IP address, so other GitHub users can run it out.
+          GITHUB_TOKEN: ${{ github.token }}
         run: bun run test
 
       - name: Verify accepted decision bank and archived evidence

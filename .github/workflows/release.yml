@@ -47,6 +47,10 @@ jobs:
         run: bun run lint
 
       - name: Run tests
+        env:
+          # As in PR Checks: use the job's token for the backend release lookup,
+          # so an IP's used-up anonymous limit can't block the deploy below.
+          GITHUB_TOKEN: ${{ github.token }}
         run: bun run test
 
       - name: Build Release Files
