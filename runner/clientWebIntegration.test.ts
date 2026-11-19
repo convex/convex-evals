@@ -458,8 +458,10 @@ test("provider failure aborts as infrastructure and redacts credentials", async 
 // abort the whole run (11 of 40 web runs in Nov 2026). The baseline retries
 // timeouts, so this is now a retryable error, not an InfrastructureError.
 test.each([
-  ["before any web call", false, true],
-  ["after a web search", true, false],
+  ["before any web call", "none", true],
+  ["after a web search", "search", false],
+  // The cut-off call may have run at Exa, so it counts as web usage.
+  ["during a web search", "hangingSearch", false],
 ])(
   "a loop timeout %s is retryable",
   async (_label, searchFirst, noWebUsage) => {
@@ -476,14 +478,35 @@ test.each([
             : url instanceof URL
               ? url.href
               : url.url;
-        if (requestUrl.includes("api.exa.ai"))
-          return Response.json({
-            requestId: "exa-1",
-            results: [],
-            costDollars: { total: 0.007 },
+        // A slow request hangs until the loop limit fires. Check aborted
+        // first: a listener added after the abort would never run.
+        const hang = () => {
+          const signal = init?.signal;
+          if (!signal) throw new Error("Expected the loop's abort signal");
+          setTimeout(
+            () =>
+              loopLimit.abort(
+                new DOMException("The operation timed out.", "TimeoutError"),
+              ),
+            5,
+          );
+          return new Promise<Response>((_, reject) => {
+            if (signal.aborted) reject(signal.reason as Error);
+            signal.addEventListener("abort", () =>
+              reject(signal.reason as Error),
+            );
           });
+        };
+        if (requestUrl.includes("api.exa.ai"))
+          return searchFirst === "hangingSearch"
+            ? await hang()
+            : Response.json({
+                requestId: "exa-1",
+                results: [],
+                costDollars: { total: 0.007 },
+              });
         turn++;
-        if (searchFirst && turn === 1)
+        if (searchFirst !== "none" && turn === 1)
           return Response.json({
             id: "gen-1",
             choices: [
@@ -506,21 +529,7 @@ test.each([
               },
             ],
           });
-        // A slow model: the request hangs until the loop limit fires.
-        const signal = init?.signal;
-        if (!signal) throw new Error("Expected the loop's abort signal");
-        setTimeout(
-          () =>
-            loopLimit.abort(
-              new DOMException("The operation timed out.", "TimeoutError"),
-            ),
-          5,
-        );
-        return await new Promise<Response>((_, reject) =>
-          signal.addEventListener("abort", () =>
-            reject(signal.reason as Error),
-          ),
-        );
+        return await hang();
       },
       { preconnect: fetchBefore.preconnect },
     ) as typeof fetch;
@@ -539,6 +548,7 @@ test.each([
       expect(error).toMatchObject({ noWebUsage });
       expect((error as Error).message).toContain("timed out");
       expect((error as Error).message).toContain(join(dir, "trace.jsonl"));
+      expect((error as Error).message).not.toContain("ClientWebTimeoutError");
       const trace = readFileSync(join(dir, "trace.jsonl"), "utf8");
       expect(trace).toContain("Web loop timed out after 300s");
       expect(trace).not.toContain("or-test-secret");

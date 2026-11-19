@@ -5,6 +5,7 @@ import {
   MISSING_MODELS_MESSAGE,
   buildEvalResult,
   getProviderFailureRunReason,
+  isRateLimitFailure,
   isTransientProviderError,
   MAX_PROVIDER_FAILURE_SHARE,
   MIN_PROVIDER_FAILURES_TO_INVALIDATE,
@@ -351,5 +352,19 @@ describe("isTransientProviderError", () => {
         new InfrastructureError("Client web generation failed: bad shape"),
       ),
     ).toBe(false);
+  });
+});
+
+describe("isRateLimitFailure", () => {
+  it("does not read a rate-limiter eval name in a timeout's trace path", () => {
+    const timeout = new ClientWebTimeoutError(
+      "Client web generation timed out; trace /tmp/research/m/007-components/005-choose_rate_limiter/attempt-1.jsonl: Web loop timed out after 300s",
+      false,
+    );
+    expect(isRateLimitFailure(timeout)).toBe(false);
+    expect(isTransientProviderError(timeout)).toBe(true);
+  });
+  it("still spots a real rate limit", () => {
+    expect(isRateLimitFailure(new Error("429 Too Many Requests"))).toBe(true);
   });
 });

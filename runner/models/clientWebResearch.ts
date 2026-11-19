@@ -183,7 +183,7 @@ export async function generateWithClientWeb(options: {
     // is excluded unless it made no web calls.
     if (error instanceof ClientWebTimeoutError)
       throw new ClientWebTimeoutError(
-        `Client web generation timed out; trace ${options.tracePath}: ${message}`,
+        `Client web generation timed out; trace ${options.tracePath}: ${message.replace(/^ClientWebTimeoutError: /, "")}`,
         error.noWebUsage,
       );
     // Do not let the runner retry a paid tool loop that failed partway for

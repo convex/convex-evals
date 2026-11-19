@@ -578,6 +578,10 @@ export async function runEvalsForModel(
 }
 
 const PROVIDER_MAX_RETRIES = 2; // 3 total attempts
+// A web loop timeout holds a slot for five minutes per attempt. Retrying it
+// once keeps a slow model inside the 120-minute periodic job limit, so the
+// run is still failed properly rather than left stuck.
+const CLIENT_WEB_TIMEOUT_MAX_RETRIES = 1; // 2 total attempts
 const RATE_LIMIT_RETRY_BASE_MS = 30_000; // 30s, then 60s
 const TRANSIENT_RETRY_BASE_MS = 2_000; // 2s, then 4s
 
@@ -711,8 +715,7 @@ async function processOneEval(
       break;
     } catch (e) {
       lastError = e;
-      const errorStr = String(e);
-      const rateLimited = isRateLimitError(errorStr);
+      const rateLimited = isRateLimitFailure(e);
       const transient = isTransientProviderError(e);
       providerAttempts.push({
         attempt: attempt + 1,
@@ -785,7 +788,13 @@ async function processOneEval(
         throw e;
       }
 
-      if (transient && attempt < PROVIDER_MAX_RETRIES) {
+      if (
+        transient &&
+        attempt <
+          (e instanceof ClientWebTimeoutError
+            ? CLIENT_WEB_TIMEOUT_MAX_RETRIES
+            : PROVIDER_MAX_RETRIES)
+      ) {
         const delayMs =
           (rateLimited ? RATE_LIMIT_RETRY_BASE_MS : TRANSIENT_RETRY_BASE_MS) *
           Math.pow(2, attempt);
@@ -840,7 +849,7 @@ async function processOneEval(
 
   // Generation failed after all attempts.
   const errorStr = String(lastError);
-  const rateLimited = isRateLimitError(errorStr);
+  const rateLimited = isRateLimitFailure(lastError);
   const infrastructureFailure = isTransientProviderError(lastError);
   const prefix = rateLimited
     ? "[rate_limit] "
@@ -902,6 +911,15 @@ function isRateLimitError(errorStr: string): boolean {
     lower.includes("quota") ||
     lower.includes("429") ||
     lower.includes("throttl")
+  );
+}
+
+/** Whether a failed attempt was rate limited. A web loop timeout never is:
+ * its message carries the trace path, and eval names such as
+ * 005-choose_rate_limiter would otherwise match. */
+export function isRateLimitFailure(error: unknown): boolean {
+  return (
+    !(error instanceof ClientWebTimeoutError) && isRateLimitError(String(error))
   );
 }
 
