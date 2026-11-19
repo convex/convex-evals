@@ -93,6 +93,7 @@ describe("decision leaderboard read paths", () => {
         return latestRunId;
       };
       await makeScore(old, retiredModel, 1);
+      await makeScore(old, "inception/mercury-decide", 0.8);
       const retired = await makeScore(current, retiredModel, 1);
       await makeScore(current, "typesafe/jev-1.13", 0.9);
       await makeScore(current, "nace-ai/drex-v2.0", 0.8);
@@ -124,7 +125,13 @@ describe("decision leaderboard read paths", () => {
       condition: "no_guidelines",
       paginationOpts: { cursor: null, numItems: 100 },
     });
-    expect(archived.results.page.map((row) => row.model)).toEqual([retiredModel]);
+    // A native model that left OpenRouter keeps its name on older benchmarks.
+    expect(
+      archived.results.page.map((row) => [row.model, row.formattedName]),
+    ).toEqual([
+      [retiredModel, retiredModel],
+      ["inception/mercury-decide", "Inception: Mercury Decide"],
+    ]);
     expect(
       (await t.query(api.decisionViews.getDecisionRun, { runId: retiredRunId }))
         ?.model,

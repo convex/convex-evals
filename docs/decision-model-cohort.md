@@ -1,6 +1,6 @@
 # Decision model cohort
 
-The decision benchmark uses nine native decision models and four LLM references.
+The decision benchmark uses eight native decision models and four LLM references.
 This keeps the comparison focused on models that return typed choices with
 probabilities, while retaining a few familiar quality and cost references.
 
@@ -9,32 +9,41 @@ its three complete hosted runs first, with the usual approval for paid calls.
 The CI cohort test prevents removing it from the configured cohort. It does not
 automatically run models or guarantee a score exists on a newly minted version.
 
-| Workflow key         | Pinned OpenRouter model            | API       |
-| -------------------- | ---------------------------------- | --------- |
-| `jev`                | `typesafe/jev-1.13`                | Decisions |
-| `drex2`              | `nace-ai/drex-v2.0`                | Decisions |
-| `clefomni`           | `cloudflare/clef-omni`             | Decisions |
-| `mercurydecide`      | `inception/mercury-decide`         | Decisions |
-| `liquidd1`           | `liquid/d1`                        | Decisions |
-| `microsoftdecision1` | `microsoft/microsoft-decision-1`   | Decisions |
-| `decider11`          | `perplexity/pplx-decider-v1.1-27b` | Decisions |
-| `solardecideflash`   | `upstage/solar-decide-flash`       | Decisions |
-| `classify1`          | `scaledown/classify-1`             | Decisions |
-| `luna6`              | `openai/gpt-6-luna`                | Chat      |
-| `sol61`              | `openai/gpt-6.1-sol`               | Chat      |
-| `opus55`             | `anthropic/claude-opus-5.5`        | Chat      |
-| `gemini4argon`       | `google/gemini-4-argon`            | Chat      |
+| Workflow key         | Pinned OpenRouter model          | API       |
+| -------------------- | -------------------------------- | --------- |
+| `jev`                | `typesafe/jev-1.13`              | Decisions |
+| `drex2`              | `nace-ai/drex-v2.0`              | Decisions |
+| `clefomni`           | `cloudflare/clef-omni`           | Decisions |
+| `liquidd1`           | `liquid/d1`                      | Decisions |
+| `microsoftdecision1` | `microsoft/microsoft-decision-1` | Decisions |
+| `decider12`          | `perplexity/pplx-decider-v1.2`   | Decisions |
+| `solardecideflash`   | `upstage/solar-decide-flash`     | Decisions |
+| `classify1`          | `scaledown/classify-1`           | Decisions |
+| `luna6`              | `openai/gpt-6-luna`              | Chat      |
+| `sol61`              | `openai/gpt-6.1-sol`             | Chat      |
+| `opus55`             | `anthropic/claude-opus-5.5`      | Chat      |
+| `gemini4argon`       | `google/gemini-4-argon`          | Chat      |
 
 The native IDs were checked against OpenRouter's
 [decision catalog](https://openrouter.ai/api/v1/models?output_modalities=decisions)
-on 14 October 2026. Catalog presence confirms the advertised API and pricing,
-not a successful inference call. All nine models also returned valid choice
-distributions in local two-question smoke tests on that date. These are
-integration checks, not model-quality comparisons. Classify-1 requires the shared
-context to be serialized as a JSON string because ScaleDown does not accept the
-arbitrary state object used by the other models. Retest new model additions
-locally, with spend approval, before hosted baseline runs. Use paid, pinned IDs rather than free
-variants or moving latest aliases for comparable runs.
+on 14 October 2026, and Decider V1.2 on 19 November 2026. Catalog presence
+confirms the advertised API and pricing, not a successful inference call. Each
+model also returned valid choice distributions in a local two-question smoke
+test on the day it was checked. These are integration checks, not model-quality
+comparisons. Classify-1 requires the shared context to be serialized as a JSON
+string because ScaleDown does not accept the arbitrary state object used by the
+other models. Retest new model additions locally, with spend approval, before
+hosted baseline runs. Use paid, pinned IDs rather than free variants or moving
+latest aliases for comparable runs.
+
+Two native models left OpenRouter in November 2026. On 18 November, Inception's
+Mercury Decide and Perplexity's Decider V1.1 27B had no endpoints, and their runs
+failed in seconds with provider errors. Perplexity's successor, Decider V1.2,
+replaced V1.1. Inception had no other model on OpenRouter, so it has no
+replacement. Both moved to `RETIRED_NATIVE_DECISION_MODELS` in
+`runner/decisions/protocol.ts`, which keeps their names on older benchmark
+versions and keeps them on the native API allowlist. Move a retired native model
+there rather than deleting it: the backend has no other record of its name.
 
 Clef Omni represents Cloudflare. The Clef and Clef Flash listings warn that
 Workers AI truncates text state to about 2K tokens; they are not included in this

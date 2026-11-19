@@ -1,4 +1,8 @@
-import { NATIVE_DECISION_MODELS, type ProviderConfig } from "./protocol.js";
+import {
+  NATIVE_DECISION_MODELS,
+  RETIRED_NATIVE_DECISION_MODELS,
+  type ProviderConfig,
+} from "./protocol.js";
 import { buildSharedState, type PresentedQuestion } from "./questions.js";
 
 export const PROVIDER_ENDPOINTS = {
@@ -10,6 +14,7 @@ export { NATIVE_DECISION_MODELS } from "./protocol.js";
 
 const nativeDecisionSlugs = new Set<string>([
   ...Object.values(NATIVE_DECISION_MODELS).map(({ model }) => model),
+  ...Object.values(RETIRED_NATIVE_DECISION_MODELS).map(({ model }) => model),
   // Keep existing Jev alias runs readable, but never curate a moving alias.
   "~typesafe/jev-latest",
 ]);

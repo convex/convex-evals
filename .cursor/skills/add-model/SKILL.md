@@ -28,6 +28,8 @@ Native models belong in `NATIVE_DECISION_MODELS` in `runner/decisions/protocol.t
 that map drives native routing, parsing, backend validation, and the native part
 of `DECISION_CI_MODELS`. Keep Jev as the required baseline. The four LLM references
 are defined in `runner/decisions/protocol.ts`; expanding them needs a reason.
+When a native model leaves the cohort, move it to `RETIRED_NATIVE_DECISION_MODELS`
+so its rows on older benchmarks keep their name.
 
 The decision benchmark is optional for coding models, so ask if unsure. Pick a
 short key without dots or dashes and update:
