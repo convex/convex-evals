@@ -10,6 +10,7 @@ import { runDecisions, type DecisionRunOptions } from "./run.js";
 import {
   createDecisionReporter,
   compactDecisionJournalRow,
+  decisionTransport,
   decisionReportingTarget,
   DECISION_DEVELOPMENT_URL,
   DECISION_PRODUCTION_URL,
@@ -227,6 +228,144 @@ it("does not call providers if the hosted run cannot be established", async () =
   );
   expect(failure.message).toContain("Version not minted");
   expect(providerCalls).toBe(0);
+});
+
+function answeringFetcher(): typeof fetch {
+  return Object.assign(
+    async () =>
+      Response.json({
+        model: "fixture-returned",
+        choices: [
+          { finish_reason: "stop", message: { content: '{"choice":"A"}' } },
+        ],
+        usage: { cost: 0 },
+      }),
+    { preconnect: () => undefined },
+  );
+}
+
+it("retries a failed evidence upload with a fresh upload URL", async () => {
+  let issuedUrls = 0;
+  const uploads: Array<{ url: string; text: string }> = [];
+  const recorded: unknown[] = [];
+  const delays: number[] = [];
+  const transport: DecisionTransport = {
+    async action(name, args) {
+      if (name === "decisionAdmin:start") return { runId: "run-fixture" };
+      if (name === "decisionAdmin:generateUploadUrl")
+        return `https://upload.invalid/${++issuedUrls}`;
+      if (name === "decisionAdmin:record") recorded.push(...(args.items as unknown[]));
+      if (name === "decisionAdmin:finish") return { status: "completed" };
+      return null;
+    },
+    async upload(url, bytes) {
+      uploads.push({ url, text: uploadedText(bytes) });
+      if (uploads.length === 1)
+        throw new Error("Evidence upload failed (HTTP 500)");
+      return `storage-${uploads.length}`;
+    },
+  };
+  const result = await runDecisions(
+    fixture(),
+    { fetcher: answeringFetcher() },
+    createDecisionReporter(
+      decisionReportingTarget(environment, commit)!,
+      "fixture",
+      transport,
+      async (ms) => {
+        delays.push(ms);
+      },
+    ),
+  );
+  expect(result.summary?.complete).toBe(true);
+  // The question's evidence fails once and goes up again on a new URL, then
+  // the run's evidence goes up first time.
+  expect(uploads.map(({ url }) => url)).toEqual([
+    "https://upload.invalid/1",
+    "https://upload.invalid/2",
+    "https://upload.invalid/3",
+  ]);
+  expect(uploads[1].text).toBe(uploads[0].text);
+  expect(recorded).toEqual([
+    expect.objectContaining({
+      evidence: {
+        storageId: "storage-2",
+        sha256: createHash("sha256").update(uploads[1].text).digest("hex"),
+      },
+    }),
+  ]);
+  expect(delays).toEqual([1000]);
+});
+
+it("finishes the run as interrupted when a question's evidence fails three uploads", async () => {
+  let questionUploads = 0;
+  let finishes = 0;
+  let runEvidence: Record<string, unknown> | undefined;
+  const delays: number[] = [];
+  const transport: DecisionTransport = {
+    async action(name) {
+      if (name === "decisionAdmin:start") return { runId: "run-fixture" };
+      if (name === "decisionAdmin:generateUploadUrl")
+        return "https://upload.invalid";
+      if (name === "decisionAdmin:finish") {
+        finishes++;
+        return { status: "interrupted" };
+      }
+      return null;
+    },
+    async upload(_url, bytes) {
+      const evidence = uploadedJson(bytes);
+      if (evidence.kind === "decision-question") {
+        questionUploads++;
+        throw new Error("Evidence upload failed (HTTP 500)");
+      }
+      runEvidence = evidence;
+      return "storage-run";
+    },
+  };
+  const failure = await rejection(
+    runDecisions(
+      fixture(),
+      { fetcher: answeringFetcher() },
+      createDecisionReporter(
+        decisionReportingTarget(environment, commit)!,
+        "fixture",
+        transport,
+        async (ms) => {
+          delays.push(ms);
+        },
+      ),
+    ),
+  );
+  expect(failure.message).toContain("Hosted decision run is interrupted");
+  expect(questionUploads).toBe(3);
+  expect(delays).toEqual([1000, 2000]);
+  expect(finishes).toBe(1);
+  // The backend takes the interrupted run's failure reason from this status.
+  expect(runEvidence?.status).toMatchObject({
+    kind: "incomplete",
+    stopReason: "Evidence upload failed (HTTP 500)",
+  });
+});
+
+it("times out an evidence upload that never gets an answer", async () => {
+  // A raw socket that takes the request and never answers. Not Bun.serve: under
+  // Bun 1.3.8's test runner, a fetch held by its handler never aborts.
+  const server = Bun.listen({
+    hostname: "127.0.0.1",
+    port: 0,
+    socket: { data() {} },
+  });
+  try {
+    const transport = await decisionTransport(DECISION_DEVELOPMENT_URL, 50);
+    const failure = await rejection(
+      transport.upload(`http://127.0.0.1:${server.port}/`, "{}"),
+    );
+    expect(failure.message).toBe("Evidence upload timed out after 50 ms");
+    expect((failure.cause as Error).name).toBe("TimeoutError");
+  } finally {
+    server.stop(true);
+  }
 });
 
 it.each(Object.values(NATIVE_DECISION_MODELS))("records $model with unused chat settings null", async (native) => {

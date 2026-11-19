@@ -146,8 +146,14 @@ export function encodeDecisionRunEvidence(value: unknown): Uint8Array {
   return gzipSync(`${JSON.stringify(value)}\n`, { level: 9 });
 }
 
+// Evidence blobs are at most 8 MB and normally upload in well under a second,
+// so this only trips on a stalled upload, which then gets retried like any
+// other failed one instead of holding the job until GitHub kills it.
+const EVIDENCE_UPLOAD_TIMEOUT_MS = 60_000;
+
 export async function decisionTransport(
   url: string,
+  uploadTimeoutMs = EVIDENCE_UPLOAD_TIMEOUT_MS,
 ): Promise<DecisionTransport> {
   // Delayed construction keeps disabled/file-only paths entirely offline.
   const { ConvexHttpClient } = await import("convex/browser");
@@ -159,17 +165,29 @@ export async function decisionTransport(
         args,
       ) as Promise<unknown>,
     async upload(uploadUrl, bytes, contentType = "application/json") {
-      const response = await fetch(uploadUrl, {
-        method: "POST",
-        headers: { "Content-Type": contentType },
-        body: bytes,
-      });
-      if (!response.ok)
-        throw new Error(`Evidence upload failed (HTTP ${response.status})`);
-      const value = (await response.json()) as { storageId?: unknown };
-      if (typeof value.storageId !== "string")
-        throw new Error("Evidence upload returned no storage ID");
-      return value.storageId;
+      try {
+        const response = await fetch(uploadUrl, {
+          method: "POST",
+          headers: { "Content-Type": contentType },
+          body: bytes,
+          signal: AbortSignal.timeout(uploadTimeoutMs),
+        });
+        if (!response.ok)
+          throw new Error(`Evidence upload failed (HTTP ${response.status})`);
+        const value = (await response.json()) as { storageId?: unknown };
+        if (typeof value.storageId !== "string")
+          throw new Error("Evidence upload returned no storage ID");
+        return value.storageId;
+      } catch (error) {
+        // The bare error only says "The operation timed out.", and this message
+        // becomes the run's failure reason if every try stalls.
+        if (error instanceof Error && error.name === "TimeoutError")
+          throw new Error(
+            `Evidence upload timed out after ${uploadTimeoutMs} ms`,
+            { cause: error },
+          );
+        throw error;
+      }
     },
   };
 }
@@ -215,22 +233,36 @@ export function createDecisionReporter(
     if (storedLength > maxStoredBytes) {
       throw new Error("Hosted decision evidence exceeds its upload limit");
     }
-    const url = await call("decisionAdmin:generateUploadUrl", {
-      token: target.token,
-      runId,
-    });
-    if (typeof url !== "string") throw new Error("Invalid evidence upload URL");
     const digest = sha256(bytes);
     if (!evidenceDirectory) throw new Error("Evidence directory unavailable");
     writeFileSync(join(evidenceDirectory, `${digest}.${gzip ? "json.gz" : "json"}`), bytes, {
       mode: 0o600,
     });
-    const storageId = await transport.upload(
-      url,
-      bytes,
-      gzip ? "application/gzip" : "application/json",
-    );
-    return { storageId, sha256: digest };
+    // A single failed upload (a storage 500, say) used to interrupt the whole
+    // run. The bytes and digest are fixed, so a retry can only store the same
+    // evidence again, and each try gets a fresh upload URL.
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const url = await call("decisionAdmin:generateUploadUrl", {
+          token: target.token,
+          runId,
+        });
+        if (typeof url !== "string")
+          throw new Error("Invalid evidence upload URL");
+        const storageId = await transport.upload(
+          url,
+          bytes,
+          gzip ? "application/gzip" : "application/json",
+        );
+        return { storageId, sha256: digest };
+      } catch (error) {
+        if (attempt === 2) throw error;
+        console.warn(
+          `Evidence upload attempt ${attempt + 1} of 3 failed (${error instanceof Error ? error.message : String(error)}), retrying`,
+        );
+        await retryDelay(1000 * (attempt + 1));
+      }
+    }
   };
   return {
     metadata: target.metadata,
