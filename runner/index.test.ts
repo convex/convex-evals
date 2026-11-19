@@ -5,12 +5,16 @@ import {
   MISSING_MODELS_MESSAGE,
   buildEvalResult,
   getProviderFailureRunReason,
+  isRateLimitFailure,
+  isTransientProviderError,
   MAX_PROVIDER_FAILURE_SHARE,
   MIN_PROVIDER_FAILURES_TO_INVALIDATE,
   parseModelNames,
   runEvalsForModel,
 } from "./index.js";
 import type { EvalIndividualResult } from "./reporting.js";
+import { InfrastructureError } from "./convexBackend.js";
+import { ClientWebTimeoutError } from "./models/clientWebLoop.js";
 
 /** Run the CLI entrypoint with a controlled environment. No network is used. */
 async function runCli(
@@ -333,5 +337,34 @@ describe("getProviderFailureRunReason", () => {
       getProviderFailureRunReason(results({ passed: 10, modelFailures: 90 })),
     ).toBeNull();
     expect(getProviderFailureRunReason([])).toBeNull();
+  });
+});
+
+describe("isTransientProviderError", () => {
+  it("retries a web loop timeout, like a baseline timeout", () => {
+    expect(
+      isTransientProviderError(new ClientWebTimeoutError("timed out", true)),
+    ).toBe(true);
+  });
+  it("still treats other web loop failures as infrastructure", () => {
+    expect(
+      isTransientProviderError(
+        new InfrastructureError("Client web generation failed: bad shape"),
+      ),
+    ).toBe(false);
+  });
+});
+
+describe("isRateLimitFailure", () => {
+  it("does not read a rate-limiter eval name in a timeout's trace path", () => {
+    const timeout = new ClientWebTimeoutError(
+      "Client web generation timed out; trace /tmp/research/m/007-components/005-choose_rate_limiter/attempt-1.jsonl: Web loop timed out after 300s",
+      false,
+    );
+    expect(isRateLimitFailure(timeout)).toBe(false);
+    expect(isTransientProviderError(timeout)).toBe(true);
+  });
+  it("still spots a real rate limit", () => {
+    expect(isRateLimitFailure(new Error("429 Too Many Requests"))).toBe(true);
   });
 });

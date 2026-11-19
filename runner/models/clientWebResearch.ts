@@ -1,7 +1,7 @@
 import type { LanguageModelUsage } from "ai";
 import { WEB_SOURCE_POLICY } from "./webSourcePolicy";
 import { InfrastructureError } from "../convexBackend";
-import { runClientWebLoop } from "./clientWebLoop";
+import { ClientWebTimeoutError, runClientWebLoop } from "./clientWebLoop";
 import {
   createJournal,
   jsonRecord,
@@ -179,9 +179,16 @@ export async function generateWithClientWeb(options: {
     } catch {
       /* Preserve the original failure if the journal itself failed. */
     }
-    // Do not let the runner retry a paid tool loop that failed partway, or
-    // grade an interrupted generation as a model failure. The journal retains
-    // evidence. (Empty answers are handled above, not here.)
+    // A timeout is retried like the baseline's; the dropped attempt's usage
+    // is excluded unless it made no web calls.
+    if (error instanceof ClientWebTimeoutError)
+      throw new ClientWebTimeoutError(
+        `Client web generation timed out; trace ${options.tracePath}: ${message.replace(/^ClientWebTimeoutError: /, "")}`,
+        error.noWebUsage,
+      );
+    // Do not let the runner retry a paid tool loop that failed partway for
+    // any other reason, or grade an interrupted generation as a model failure.
+    // The journal retains evidence. (Empty answers are handled above.)
     throw new InfrastructureError(
       `Client web generation failed; trace ${options.tracePath}: ${message}`,
     );
