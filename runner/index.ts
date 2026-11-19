@@ -579,8 +579,9 @@ export async function runEvalsForModel(
 
 const PROVIDER_MAX_RETRIES = 2; // 3 total attempts
 // A web loop timeout holds a slot for five minutes per attempt. Retrying it
-// once keeps a slow model inside the 120-minute periodic job limit, so the
-// run is still failed properly rather than left stuck.
+// once, not twice, makes a slow model much less likely to run past the
+// 120-minute periodic job limit. A job cut off there leaves its run stuck
+// until the hourly cleanup fails it.
 const CLIENT_WEB_TIMEOUT_MAX_RETRIES = 1; // 2 total attempts
 const RATE_LIMIT_RETRY_BASE_MS = 30_000; // 30s, then 60s
 const TRANSIENT_RETRY_BASE_MS = 2_000; // 2s, then 4s
@@ -788,18 +789,16 @@ async function processOneEval(
         throw e;
       }
 
-      if (
-        transient &&
-        attempt <
-          (e instanceof ClientWebTimeoutError
-            ? CLIENT_WEB_TIMEOUT_MAX_RETRIES
-            : PROVIDER_MAX_RETRIES)
-      ) {
+      const maxRetries =
+        e instanceof ClientWebTimeoutError
+          ? CLIENT_WEB_TIMEOUT_MAX_RETRIES
+          : PROVIDER_MAX_RETRIES;
+      if (transient && attempt < maxRetries) {
         const delayMs =
           (rateLimited ? RATE_LIMIT_RETRY_BASE_MS : TRANSIENT_RETRY_BASE_MS) *
           Math.pow(2, attempt);
         logInfo(
-          `[${evalPathStr}] Transient provider failure, retrying in ${delayMs / 1000}s (attempt ${attempt + 1}/${PROVIDER_MAX_RETRIES})...`,
+          `[${evalPathStr}] Transient provider failure, retrying in ${delayMs / 1000}s (attempt ${attempt + 1}/${maxRetries})...`,
         );
         await new Promise((r) => setTimeout(r, delayMs));
         continue;
