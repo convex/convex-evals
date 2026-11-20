@@ -354,7 +354,7 @@ The periodic workflow uses the same scheduling policy before it actually queues 
 - if we have never run a model before, it is due immediately
 - otherwise we look at the model's stored OpenRouter first-seen timestamp
 - the target interval starts at `24h`, grows with model age, hits about `30d` at one year old, and approaches `60d` for very old models
-- the due check uses the latest default-experiment attempt across benchmark versions, so minting a benchmark cannot make every model immediately due
+- the due check uses the latest default-experiment attempt, but an attempt from before the current coding benchmark was minted doesn't count (unless it was backfilled into that version), so after a mint every model is due once and the new version fills up on the next pass
 - failed attempts preserve the scheduling cooldown, while `no_guidelines` runs do not delay the next default run
 
 The OpenRouter-derived selectors also do a lightweight preflight check so obviously dead models are skipped before entering the matrix.
@@ -364,8 +364,9 @@ The OpenRouter-derived selectors also do a lightweight preflight check so obviou
 Benchmark versions are minted manually after a meaningful batch of eval work
 is complete. The version itself is a deterministic hash derived from the
 scoring protocol, system prompt, guidelines, and complete eval suite. Minting
-is metadata-only: it does not queue or run any model, and the periodic workflow
-continues using the age- and cost-aware schedule above.
+is metadata-only: it does not queue or run any model itself, but the next
+periodic pass runs every model that has no attempt on the new version, then
+goes back to the age- and cost-aware schedule above.
 
 The public leaderboard shows only scores from the current version. Older
 versions remain available in the archive. Pre-versioning runs are backfilled

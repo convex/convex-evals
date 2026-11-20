@@ -124,7 +124,7 @@ function describeDecision(decision: SchedulingDecision, now: number): string {
       : "";
 
   if (decision.lastRunTime === null) {
-    return `never run before, target interval ${formatDuration(decision.targetIntervalMs)}${costSuffix}`;
+    return `no run on the current benchmark, target interval ${formatDuration(decision.targetIntervalMs)}${costSuffix}`;
   }
 
   const elapsedMs = Math.max(0, now - decision.lastRunTime);

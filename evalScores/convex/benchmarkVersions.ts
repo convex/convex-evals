@@ -104,7 +104,9 @@ export const seedHistorical = internalMutation({
 
 /**
  * Minting is explicit and metadata-only. It resolves future runs with this
- * exact hash to the new version but never schedules paid model runs.
+ * exact hash to the new version and schedules nothing itself, but the
+ * periodic scheduler (modelScores.getSchedulingStats) then treats every model
+ * without a run since the mint as due.
  */
 export const mint = internalMutation({
   args: {
