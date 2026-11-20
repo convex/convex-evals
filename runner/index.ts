@@ -581,11 +581,12 @@ export async function runEvalsForModel(
 }
 
 const PROVIDER_MAX_RETRIES = 2; // 3 total attempts
-// A web loop timeout holds a slot for five minutes per attempt. Retrying it
-// once, not twice, makes a slow model much less likely to run past the
-// 120-minute periodic job limit. A job cut off there leaves its run stuck
-// until the hourly cleanup fails it.
-const CLIENT_WEB_TIMEOUT_MAX_RETRIES = 1; // 2 total attempts
+// A web loop attempt can hold a slot for up to five minutes, and a provider
+// error has already had the loop's own retries. Retrying once, not twice,
+// makes a slow model much less likely to run past the 120-minute periodic job
+// limit. A job cut off there leaves its run stuck until the hourly cleanup
+// fails it.
+const CLIENT_WEB_MAX_RETRIES = 1; // 2 total attempts
 const RATE_LIMIT_RETRY_BASE_MS = 30_000; // 30s, then 60s
 const TRANSIENT_RETRY_BASE_MS = 2_000; // 2s, then 4s
 
@@ -796,8 +797,9 @@ async function processOneEval(
       }
 
       const maxRetries =
-        e instanceof ClientWebTimeoutError
-          ? CLIENT_WEB_TIMEOUT_MAX_RETRIES
+        e instanceof ClientWebTimeoutError ||
+        e instanceof ClientWebProviderError
+          ? CLIENT_WEB_MAX_RETRIES
           : PROVIDER_MAX_RETRIES;
       if (transient && attempt < maxRetries) {
         const delayMs =

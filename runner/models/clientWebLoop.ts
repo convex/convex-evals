@@ -1,4 +1,5 @@
 import { WEB_SOURCE_POLICY } from "./webSourcePolicy";
+import type { JSONValue } from "ai";
 import {
   ClientWebTools,
   jsonRecord,
@@ -33,9 +34,9 @@ export class ClientWebTimeoutError extends Error {
   }
 }
 
-/** OpenRouter answered a model request with a status the baseline retries:
- * rate limited (429) or a gateway error (502, 503, 504). Other runs wait and
- * retry these, so the runner does too rather than failing the whole run. */
+/** A model request kept failing with a status the baseline retries (408,
+ * 429, any 5xx, or a dropped connection, as status 0) after the loop's own
+ * retries. The runner retries the whole eval rather than failing the run. */
 export class ClientWebProviderError extends Error {
   constructor(
     message: string,
@@ -49,7 +50,76 @@ export class ClientWebProviderError extends Error {
   }
 }
 
-const RETRYABLE_MODEL_STATUSES = [429, 502, 503, 504];
+/** Retries of a single model request inside the loop, like the AI SDK's
+ * retries in the baseline: 2, 4, 8, 16, 32 s, or longer if Retry-After asks.
+ * The request has no side effects, so the searches already made are kept.
+ * Exported so tests can shorten the waits. */
+export const modelRequestRetry = {
+  retries: 5,
+  baseMs: 2_000,
+  maxWaitMs: 60_000,
+};
+
+function isRetryableStatus(status: number): boolean {
+  return (
+    status === 0 ||
+    status === 408 ||
+    status === 429 ||
+    (status >= 500 && status < 600)
+  );
+}
+
+function errorCode(value: JSONValue | undefined, fallback: number): number {
+  const code = Number(jsonRecord(value).code);
+  return Number.isInteger(code) && code > 0 ? code : fallback;
+}
+
+/** The failure in a model response, if any. OpenRouter can also put an error
+ * in a 200 body, or on the choice when the upstream provider failed partway. */
+function responseFailure(
+  status: number,
+  data: Record<string, JSONValue>,
+): { status: number; detail: JSONValue } | undefined {
+  if (status < 200 || status >= 300)
+    return { status, detail: data.error ?? null };
+  if (data.error !== undefined && data.error !== null)
+    return { status: errorCode(data.error, status), detail: data.error };
+  const choice = jsonRecord(
+    Array.isArray(data.choices) ? data.choices[0] : undefined,
+  );
+  if (choice.error !== undefined || choice.finish_reason === "error")
+    return {
+      status: errorCode(choice.error, 502),
+      detail: choice.error ?? "finish_reason error",
+    };
+  return undefined;
+}
+
+function retryAfterMs(header: string | null): number {
+  if (!header) return 0;
+  const seconds = Number(header);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+  const date = Date.parse(header);
+  return Number.isFinite(date) ? Math.max(0, date - Date.now()) : 0;
+}
+
+function sleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(signal.reason as Error);
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal.reason as Error);
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
 
 export async function runClientWebLoop(options: {
   model: string;
@@ -81,6 +151,93 @@ export async function runClientWebLoop(options: {
     signal,
   });
   const usage: unknown[] = [];
+  const requestModel = async (
+    turn: number,
+    body: Record<string, unknown>,
+  ): Promise<Record<string, JSONValue>> => {
+    for (let retry = 0; ; retry++) {
+      options.journal({
+        kind: "model_request",
+        turn,
+        ...(retry ? { retry } : {}),
+        body,
+      });
+      let status: number;
+      let data: Record<string, JSONValue> = {};
+      let waitAtLeastMs = 0;
+      try {
+        const response = await (options.modelFetch ?? globalThis.fetch)(
+          "https://openrouter.ai/api/v1/chat/completions",
+          {
+            method: "POST",
+            redirect: "error",
+            signal,
+            headers: {
+              Authorization: `Bearer ${options.openrouterKey}`,
+              "Content-Type": "application/json",
+              ...(options.sessionId
+                ? { "x-session-id": options.sessionId }
+                : {}),
+            },
+            body: JSON.stringify(body),
+          },
+        );
+        options.journal({
+          kind: "model_response_headers",
+          turn,
+          httpStatus: response.status,
+        });
+        status = response.status;
+        waitAtLeastMs = retryAfterMs(response.headers.get("retry-after"));
+        try {
+          data = jsonRecord(await readBoundedJson(response));
+        } catch (readError) {
+          // A proxy can answer a 429 or 502 with an HTML page, and a
+          // connection can drop mid-body. Neither is a broken run.
+          if (signal.aborted) throw readError;
+          data = { error: `Unreadable response body: ${String(readError)}` };
+          if (response.ok) status = 0;
+        }
+      } catch (requestError) {
+        if (signal.aborted) throw requestError;
+        // The request itself failed: the connection dropped or was refused.
+        status = 0;
+        data = { error: `Request failed: ${String(requestError)}` };
+      }
+      options.journal({
+        kind: "model_response",
+        turn,
+        httpStatus: status,
+        data,
+      });
+      const failure = responseFailure(status, data);
+      if (!failure) return data;
+      // A provider that failed partway may still have billed tokens.
+      if (data.usage !== undefined) usage.push(data.usage);
+      const message = `Model request failed (${failure.status || "network"}): ${JSON.stringify(failure.detail)}`;
+      if (!isRetryableStatus(failure.status)) throw new Error(message);
+      if (retry < modelRequestRetry.retries) {
+        const waitMs = Math.min(
+          modelRequestRetry.maxWaitMs,
+          Math.max(modelRequestRetry.baseMs * 2 ** retry, waitAtLeastMs),
+        );
+        options.journal({
+          kind: "model_request_retry",
+          turn,
+          status: failure.status,
+          waitMs,
+        });
+        await sleep(waitMs, signal);
+        continue;
+      }
+      const summary = tools.summary();
+      throw new ClientWebProviderError(
+        message,
+        failure.status,
+        summary.searchAttempts + summary.fetchAttempts === 0,
+      );
+    }
+  };
   options.journal({
     kind: "pilot_started",
     profile: "client-exa-pilot-v1",
@@ -129,61 +286,7 @@ export async function runClientWebLoop(options: {
         plugins: [],
         provider: { require_parameters: true },
       };
-      options.journal({ kind: "model_request", turn, body });
-      const response = await (options.modelFetch ?? globalThis.fetch)(
-        "https://openrouter.ai/api/v1/chat/completions",
-        {
-          method: "POST",
-          redirect: "error",
-          signal,
-          headers: {
-            Authorization: `Bearer ${options.openrouterKey}`,
-            "Content-Type": "application/json",
-            ...(options.sessionId ? { "x-session-id": options.sessionId } : {}),
-          },
-          body: JSON.stringify(body),
-        },
-      );
-      options.journal({
-        kind: "model_response_headers",
-        turn,
-        httpStatus: response.status,
-      });
-      let data: ReturnType<typeof jsonRecord>;
-      try {
-        data = jsonRecord(await readBoundedJson(response));
-      } catch (readError) {
-        // A proxy in front of OpenRouter can answer a 429 or 502 with an HTML
-        // page. That is still a status to retry, not a broken run.
-        if (
-          signal.aborted ||
-          !RETRYABLE_MODEL_STATUSES.includes(response.status)
-        )
-          throw readError;
-        data = { error: `Unreadable ${response.status} response body` };
-      }
-      options.journal({
-        kind: "model_response",
-        turn,
-        httpStatus: response.status,
-        data,
-      });
-      if (!response.ok || data.error) {
-        // OpenRouter can also put an error, with its own code, in a 200 body.
-        const code = jsonRecord(data.error).code;
-        const status =
-          response.ok && typeof code === "number" ? code : response.status;
-        const message = `Model request failed (${status}): ${JSON.stringify(data.error)}`;
-        if (RETRYABLE_MODEL_STATUSES.includes(status)) {
-          const summary = tools.summary();
-          throw new ClientWebProviderError(
-            message,
-            status,
-            summary.searchAttempts + summary.fetchAttempts === 0,
-          );
-        }
-        throw new Error(message);
-      }
+      const data = await requestModel(turn, body);
       usage.push(data.usage);
       const choice = jsonRecord(
         Array.isArray(data.choices) ? data.choices[0] : undefined,

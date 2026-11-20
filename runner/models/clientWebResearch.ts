@@ -190,8 +190,8 @@ export async function generateWithClientWeb(options: {
         `Client web generation timed out; trace ${options.tracePath}: ${message.replace(/^ClientWebTimeoutError: /, "")}`,
         error.noWebUsage,
       );
-    // A rate limit or gateway error is retried like the baseline's, on the
-    // same terms as a timeout.
+    // A rate limit, 5xx or dropped connection that outlasted the loop's own
+    // retries is retried by the runner, on the same terms as a timeout.
     if (error instanceof ClientWebProviderError)
       throw new ClientWebProviderError(
         `Client web model request failed; trace ${options.tracePath}: ${message.replace(/^ClientWebProviderError: /, "")}`,
