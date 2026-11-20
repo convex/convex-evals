@@ -163,8 +163,10 @@ benchmark version. If the user expects more eval work over the next few days,
 offer to schedule a follow-up task to revisit minting after that work is done.
 
 Do not mint or publish a benchmark version without the user's explicit
-approval. Minting is metadata-only and must not trigger paid model runs; the
-normal periodic schedule populates the new version over time.
+approval. Minting is metadata-only and queues nothing itself, but it does
+cost money: the next periodic pass treats every model without a run on the new
+version as due, so give the user a dollar estimate (each due model's average
+run cost times its conditions) along with the mint question.
 
 Minting runs only through the workflow on `main`, and only with Mike's approval:
 

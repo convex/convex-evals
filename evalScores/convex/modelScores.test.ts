@@ -1018,6 +1018,131 @@ describe("recomputeModelScores", () => {
     expect(after[0].totalScore).toBe(1);
   });
 
+  it("treats a model as due once a new benchmark is minted", async () => {
+    const t = convexTest(schema, modules);
+
+    vi.setSystemTime(new Date("2026-04-01T00:00:00Z"));
+    await t.mutation(internal.benchmarkVersions.mint, {
+      version: "benchmark-v1",
+      evalCount: 1,
+      curatedModels: ["model-a"],
+    });
+    await createCompletedRun(t, {
+      model: "model-a",
+      benchmarkVersion: "benchmark-v1",
+      evals: [{ category: "cat1", name: "eval1", passed: true, costUsd: 2 }],
+    });
+    const model = await t.query(api.models.getBySlug, { slug: "model-a" });
+    const modelId = model!._id;
+
+    const beforeMint = await t.query(api.modelScores.getSchedulingStats, {
+      modelId,
+    });
+    expect(beforeMint?.latestRunTime).not.toBeNull();
+
+    vi.setSystemTime(new Date("2026-04-02T00:00:00Z"));
+    await t.mutation(internal.benchmarkVersions.mint, {
+      version: "benchmark-v2",
+      evalCount: 1,
+      curatedModels: ["model-a"],
+    });
+
+    // The v1 run no longer counts, but its cost still sets the interval.
+    expect(
+      await t.query(api.modelScores.getSchedulingStats, { modelId }),
+    ).toEqual({ latestRunTime: null, averageRunCostUsd: 2 });
+
+    // Any attempt after the mint counts again, failed ones included, so a
+    // model that fails on the new suite is not retried every pass.
+    vi.setSystemTime(new Date("2026-04-02T01:00:00Z"));
+    await createFailedRun(t, { model: "model-a" });
+    const afterAttempt = await t.query(api.modelScores.getSchedulingStats, {
+      modelId,
+    });
+    expect(afterAttempt?.latestRunTime).toBeGreaterThanOrEqual(
+      new Date("2026-04-02T01:00:00Z").getTime(),
+    );
+  });
+
+  it("keeps the post-mint cooldown for no_guidelines runs, re-mints and backfills", async () => {
+    const t = convexTest(schema, modules);
+
+    vi.setSystemTime(new Date("2026-04-01T00:00:00Z"));
+    await t.mutation(internal.benchmarkVersions.mint, {
+      version: "benchmark-v1",
+      evalCount: 1,
+      curatedModels: ["model-a"],
+    });
+    await createCompletedRun(t, {
+      model: "model-a",
+      benchmarkVersion: "benchmark-v1",
+      evals: [{ category: "cat1", name: "eval1", passed: true }],
+    });
+    // Made before v2 exists, so it is filed as unminted for now.
+    vi.setSystemTime(new Date("2026-04-01T06:00:00Z"));
+    const earlyRunId = await createCompletedRun(t, {
+      model: "model-a",
+      benchmarkVersion: "benchmark-v2",
+      evals: [{ category: "cat1", name: "eval1", passed: true }],
+    });
+    const model = await t.query(api.models.getBySlug, { slug: "model-a" });
+    const modelId = model!._id;
+
+    vi.setSystemTime(new Date("2026-04-02T00:00:00Z"));
+    await t.mutation(internal.benchmarkVersions.mint, {
+      version: "benchmark-v2",
+      evalCount: 1,
+      curatedModels: ["model-a"],
+    });
+
+    // A no_guidelines run doesn't count for the default schedule.
+    vi.setSystemTime(new Date("2026-04-02T01:00:00Z"));
+    await createCompletedRun(t, {
+      model: "model-a",
+      experiment: "no_guidelines",
+      benchmarkVersion: "benchmark-v2",
+      evals: [{ category: "cat1", name: "eval1", passed: true }],
+    });
+    expect(
+      (await t.query(api.modelScores.getSchedulingStats, { modelId }))
+        ?.latestRunTime,
+    ).toBeNull();
+
+    // Moving the early run into v2 gives the model a current score, so it is
+    // not run again.
+    await t.run(async (ctx) =>
+      backfillCompletedRunsToBenchmark(ctx, {
+        version: "benchmark-v2",
+        runIds: [earlyRunId],
+      }),
+    );
+    vi.runAllTimers();
+    await t.finishInProgressScheduledFunctions();
+    expect(
+      (await t.query(api.modelScores.getSchedulingStats, { modelId }))
+        ?.latestRunTime,
+    ).not.toBeNull();
+
+    // Re-minting the same version (to change curated models) keeps its
+    // effectiveAt, so it doesn't make models due again.
+    vi.setSystemTime(new Date("2026-04-03T00:00:00Z"));
+    await createCompletedRun(t, {
+      model: "model-b",
+      benchmarkVersion: "benchmark-v2",
+      evals: [{ category: "cat1", name: "eval1", passed: true }],
+    });
+    await t.mutation(internal.benchmarkVersions.mint, {
+      version: "benchmark-v2",
+      evalCount: 1,
+      curatedModels: ["model-a", "model-b"],
+    });
+    const modelB = await t.query(api.models.getBySlug, { slug: "model-b" });
+    expect(
+      (await t.query(api.modelScores.getSchedulingStats, { modelId: modelB!._id }))
+        ?.latestRunTime,
+    ).not.toBeNull();
+  });
+
   it("returns scheduling stats for failed-only models", async () => {
     const t = convexTest(schema, modules);
 

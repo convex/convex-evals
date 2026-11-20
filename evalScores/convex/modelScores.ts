@@ -1,4 +1,8 @@
-import { requireCodingBenchmark, listBenchmarksByKind } from "./benchmarkKinds.js";
+import {
+  requireCodingBenchmark,
+  listBenchmarksByKind,
+  latestBenchmarkByKind,
+} from "./benchmarkKinds.js";
 import { computeWebUsage } from "./webUsage";
 /**
  * Materialised leaderboard scores per (model, experiment, benchmark) group.
@@ -131,7 +135,7 @@ export const getSchedulingStats = query({
   },
   returns: v.union(
     v.object({
-      latestRunTime: v.number(),
+      latestRunTime: v.union(v.number(), v.null()),
       averageRunCostUsd: v.union(v.number(), v.null()),
     }),
     v.null(),
@@ -163,8 +167,20 @@ export const getSchedulingStats = query({
     const latestRunTime = latestAttempt?._creationTime ?? row?.latestRunTime;
 
     if (latestRunTime === undefined) return null;
+
+    // A run from before the current coding benchmark was minted scored the
+    // old suite, so it must not hold the model back from the new one. Report
+    // no latest run, which makes the periodic scheduler treat it as due now.
+    // Runs made before the mint and backfilled into it still count, through
+    // their score row on the current benchmark.
+    const currentBenchmark = await latestBenchmarkByKind(ctx, "coding");
+    const ranOnCurrentBenchmark =
+      currentBenchmark === null ||
+      latestRunTime >= currentBenchmark.effectiveAt ||
+      rows.some((r) => r.benchmarkVersion === currentBenchmark._id);
+
     return {
-      latestRunTime,
+      latestRunTime: ranOnCurrentBenchmark ? latestRunTime : null,
       averageRunCostUsd: row?.averageRunCostUsd ?? null,
     };
   },
