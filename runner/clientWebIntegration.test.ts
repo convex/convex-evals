@@ -497,13 +497,15 @@ const failures: Record<string, () => Response> = {
       headers: { "Content-Type": "text/html" },
     }),
   "an empty 503 body": () => new Response("", { status: 503 }),
+  "an error string in a 200 body": () =>
+    Response.json({ error: "Upstream error" }),
   "a provider error on the choice": () =>
     Response.json({
       id: "gen-x",
       choices: [
         {
           finish_reason: "error",
-          error: { code: 502, message: "Provider disconnected" },
+          error: { code: 503, message: "Provider disconnected" },
           message: { role: "assistant", content: "" },
         },
       ],
@@ -528,7 +530,8 @@ const expectedStatus: Record<string, number> = {
   "a string 503 code in a 200 body": 503,
   "an HTML 502 page from a proxy": 502,
   "an empty 503 body": 503,
-  "a provider error on the choice": 502,
+  "an error string in a 200 body": 502,
+  "a provider error on the choice": 503,
   "an error finish with no detail": 502,
   "a dropped connection": 0,
 };
@@ -621,6 +624,90 @@ test.each([
     expect((error as Error).message).not.toContain("ClientWebProviderError");
   },
 );
+
+test("a failed response's billed usage is kept", async () => {
+  fakeOpenRouter([
+    () =>
+      Response.json({
+        id: "gen-x",
+        choices: [
+          {
+            finish_reason: "error",
+            message: { role: "assistant", content: "" },
+          },
+        ],
+        usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8 },
+      }),
+    () =>
+      Response.json({
+        id: "gen-2",
+        choices: [
+          {
+            finish_reason: "stop",
+            message: { role: "assistant", content: answer },
+          },
+        ],
+        usage: { prompt_tokens: 7, completion_tokens: 2, total_tokens: 9 },
+      }),
+  ]);
+  const result = await generate();
+  expect(result.usage).toMatchObject({
+    inputTokens: 12,
+    outputTokens: 5,
+    totalTokens: 17,
+  });
+});
+
+test("an answer that finished normally is graded even with an error field", async () => {
+  const calls = fakeOpenRouter([
+    () =>
+      Response.json({
+        id: "gen-1",
+        choices: [
+          {
+            finish_reason: "stop",
+            error: null,
+            message: { role: "assistant", content: answer },
+          },
+        ],
+      }),
+  ]);
+  const result = await generate();
+  expect(result.files["convex/tasks.ts"]).toContain("complete");
+  expect(calls.model).toBe(1);
+});
+
+test("a 401 is not retried", async () => {
+  const calls = fakeOpenRouter([
+    () => Response.json({ error: { code: 401 } }, { status: 401 }),
+  ]);
+  await rejects(generate(), InfrastructureError);
+  expect(calls.model).toBe(1);
+});
+
+test("Retry-After below the cap sets the wait", async () => {
+  fakeOpenRouter([
+    () =>
+      Response.json(
+        { error: { code: 429 } },
+        { status: 429, headers: { "Retry-After": "0.003" } },
+      ),
+    () =>
+      Response.json({
+        id: "gen-2",
+        choices: [
+          {
+            finish_reason: "stop",
+            message: { role: "assistant", content: answer },
+          },
+        ],
+      }),
+  ]);
+  await generate();
+  expect(readFileSync(join(dir, "trace.jsonl"), "utf8")).toContain(
+    '"waitMs":3',
+  );
+});
 
 test("Retry-After sets the wait, up to the cap", async () => {
   fakeOpenRouter([

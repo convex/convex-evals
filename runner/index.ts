@@ -674,6 +674,7 @@ async function processOneEval(
     rawResponse: string;
   } | null = null;
   let lastError: unknown = null;
+  let webLoopFailed = false;
 
   for (let attempt = 0; attempt <= PROVIDER_MAX_RETRIES; attempt++) {
     const attemptStartedAt = Date.now();
@@ -796,11 +797,16 @@ async function processOneEval(
         throw e;
       }
 
-      const maxRetries =
+      // Once the web loop has failed this way, a later empty answer doesn't
+      // earn this eval a third attempt either.
+      if (
         e instanceof ClientWebTimeoutError ||
         e instanceof ClientWebProviderError
-          ? CLIENT_WEB_MAX_RETRIES
-          : PROVIDER_MAX_RETRIES;
+      )
+        webLoopFailed = true;
+      const maxRetries = webLoopFailed
+        ? CLIENT_WEB_MAX_RETRIES
+        : PROVIDER_MAX_RETRIES;
       if (transient && attempt < maxRetries) {
         const delayMs =
           (rateLimited ? RATE_LIMIT_RETRY_BASE_MS : TRANSIENT_RETRY_BASE_MS) *

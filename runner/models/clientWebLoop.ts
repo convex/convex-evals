@@ -57,7 +57,8 @@ export class ClientWebProviderError extends Error {
 export const modelRequestRetry = {
   retries: 5,
   baseMs: 2_000,
-  maxWaitMs: 60_000,
+  // Five capped waits (150 s) leave room inside the 5-minute loop.
+  maxWaitMs: 30_000,
 };
 
 function isRetryableStatus(status: number): boolean {
@@ -75,7 +76,9 @@ function errorCode(value: JSONValue | undefined, fallback: number): number {
 }
 
 /** The failure in a model response, if any. OpenRouter can also put an error
- * in a 200 body, or on the choice when the upstream provider failed partway. */
+ * in a 200 body (the status went out before the upstream failed, so one
+ * without a code counts as a 502), or finish a choice with "error" when the
+ * provider failed partway. A choice that finished normally is graded. */
 function responseFailure(
   status: number,
   data: Record<string, JSONValue>,
@@ -83,11 +86,11 @@ function responseFailure(
   if (status < 200 || status >= 300)
     return { status, detail: data.error ?? null };
   if (data.error !== undefined && data.error !== null)
-    return { status: errorCode(data.error, status), detail: data.error };
+    return { status: errorCode(data.error, 502), detail: data.error };
   const choice = jsonRecord(
     Array.isArray(data.choices) ? data.choices[0] : undefined,
   );
-  if (choice.error !== undefined || choice.finish_reason === "error")
+  if (choice.finish_reason === "error")
     return {
       status: errorCode(choice.error, 502),
       detail: choice.error ?? "finish_reason error",
@@ -196,7 +199,12 @@ export async function runClientWebLoop(options: {
           // connection can drop mid-body. Neither is a broken run.
           if (signal.aborted) throw readError;
           data = { error: `Unreadable response body: ${String(readError)}` };
-          if (response.ok) status = 0;
+          if (response.ok) {
+            status = 0;
+            // The generation was billed but its usage is lost, so the
+            // eval's token and cost totals become unknown.
+            usage.push(null);
+          }
         }
       } catch (requestError) {
         if (signal.aborted) throw requestError;
