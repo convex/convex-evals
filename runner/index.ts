@@ -50,7 +50,10 @@ import {
   validateExperimentConfiguration,
 } from "./experiments.js";
 import { WebResearchProviderError } from "./models/webResearch.js";
-import { ClientWebTimeoutError } from "./models/clientWebLoop.js";
+import {
+  ClientWebProviderError,
+  ClientWebTimeoutError,
+} from "./models/clientWebLoop.js";
 import { requireWebResearchApiKey } from "./models/webResearchTools.js";
 import { computeBenchmarkDefinition } from "./benchmark.js";
 import {
@@ -578,11 +581,12 @@ export async function runEvalsForModel(
 }
 
 const PROVIDER_MAX_RETRIES = 2; // 3 total attempts
-// A web loop timeout holds a slot for five minutes per attempt. Retrying it
-// once, not twice, makes a slow model much less likely to run past the
-// 120-minute periodic job limit. A job cut off there leaves its run stuck
-// until the hourly cleanup fails it.
-const CLIENT_WEB_TIMEOUT_MAX_RETRIES = 1; // 2 total attempts
+// A web loop attempt can hold a slot for up to five minutes, and a provider
+// error has already had the loop's own retries. Retrying once, not twice,
+// makes a slow model much less likely to run past the 120-minute periodic job
+// limit. A job cut off there leaves its run stuck until the hourly cleanup
+// fails it.
+const CLIENT_WEB_MAX_RETRIES = 1; // 2 total attempts
 const RATE_LIMIT_RETRY_BASE_MS = 30_000; // 30s, then 60s
 const TRANSIENT_RETRY_BASE_MS = 2_000; // 2s, then 4s
 
@@ -670,6 +674,7 @@ async function processOneEval(
     rawResponse: string;
   } | null = null;
   let lastError: unknown = null;
+  let webLoopFailed = false;
 
   for (let attempt = 0; attempt <= PROVIDER_MAX_RETRIES; attempt++) {
     const attemptStartedAt = Date.now();
@@ -736,7 +741,8 @@ async function processOneEval(
               ? e.generationId
               : undefined,
         ...((e instanceof EmptyProviderResponseError ||
-          e instanceof ClientWebTimeoutError) &&
+          e instanceof ClientWebTimeoutError ||
+          e instanceof ClientWebProviderError) &&
         e.noWebUsage
           ? { noWebUsage: true }
           : {}),
@@ -756,7 +762,9 @@ async function processOneEval(
         (e instanceof EmptyProviderResponseError &&
           isWebResearchExperiment(process.env.EVALS_EXPERIMENT) &&
           !e.noWebUsage) ||
-        (e instanceof ClientWebTimeoutError && !e.noWebUsage)
+        ((e instanceof ClientWebTimeoutError ||
+          e instanceof ClientWebProviderError) &&
+          !e.noWebUsage)
       ) {
         logInfo(
           `[${evalPathStr}] Failed-attempt usage and charges are excluded from reported totals; consult the research trace.`,
@@ -789,10 +797,16 @@ async function processOneEval(
         throw e;
       }
 
-      const maxRetries =
-        e instanceof ClientWebTimeoutError
-          ? CLIENT_WEB_TIMEOUT_MAX_RETRIES
-          : PROVIDER_MAX_RETRIES;
+      // Once the web loop has failed this way, a later empty answer doesn't
+      // earn this eval a third attempt either.
+      if (
+        e instanceof ClientWebTimeoutError ||
+        e instanceof ClientWebProviderError
+      )
+        webLoopFailed = true;
+      const maxRetries = webLoopFailed
+        ? CLIENT_WEB_MAX_RETRIES
+        : PROVIDER_MAX_RETRIES;
       if (transient && attempt < maxRetries) {
         const delayMs =
           (rateLimited ? RATE_LIMIT_RETRY_BASE_MS : TRANSIENT_RETRY_BASE_MS) *
@@ -913,13 +927,13 @@ function isRateLimitError(errorStr: string): boolean {
   );
 }
 
-/** Whether a failed attempt was rate limited. A web loop timeout never is:
- * its message carries the trace path, and eval names such as
- * 005-choose_rate_limiter would otherwise match. */
+/** Whether a failed attempt was rate limited. Web loop errors carry the
+ * trace path in their message, and eval names such as 005-choose_rate_limiter
+ * would match the text, so they are judged by their status instead. */
 export function isRateLimitFailure(error: unknown): boolean {
-  return (
-    !(error instanceof ClientWebTimeoutError) && isRateLimitError(String(error))
-  );
+  if (error instanceof ClientWebTimeoutError) return false;
+  if (error instanceof ClientWebProviderError) return error.status === 429;
+  return isRateLimitError(String(error));
 }
 
 /** Detect empty/capacity/network failures that are safe to retry. */
@@ -927,6 +941,7 @@ export function isTransientProviderError(error: unknown): boolean {
   if (error instanceof WebResearchProviderError) return error.canRetry(0, 1);
   if (error instanceof EmptyProviderResponseError) return true;
   if (error instanceof ClientWebTimeoutError) return true;
+  if (error instanceof ClientWebProviderError) return true;
   const lower = String(error).toLowerCase();
   return (
     isRateLimitError(lower) ||

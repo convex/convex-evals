@@ -14,7 +14,10 @@ import {
 } from "./index.js";
 import type { EvalIndividualResult } from "./reporting.js";
 import { InfrastructureError } from "./convexBackend.js";
-import { ClientWebTimeoutError } from "./models/clientWebLoop.js";
+import {
+  ClientWebProviderError,
+  ClientWebTimeoutError,
+} from "./models/clientWebLoop.js";
 
 /** Run the CLI entrypoint with a controlled environment. No network is used. */
 async function runCli(
@@ -366,5 +369,23 @@ describe("isRateLimitFailure", () => {
   });
   it("still spots a real rate limit", () => {
     expect(isRateLimitFailure(new Error("429 Too Many Requests"))).toBe(true);
+  });
+  it("judges web loop provider errors by status, not the trace path", () => {
+    const trace =
+      "Client web model request failed; trace /tmp/research/m/007-components/005-choose_rate_limiter/attempt-1.jsonl";
+    const limited = new ClientWebProviderError(
+      `${trace}: Model request failed (429): {}`,
+      429,
+      true,
+    );
+    const gateway = new ClientWebProviderError(
+      `${trace}: Model request failed (503): {}`,
+      503,
+      false,
+    );
+    expect(isRateLimitFailure(limited)).toBe(true);
+    expect(isTransientProviderError(limited)).toBe(true);
+    expect(isRateLimitFailure(gateway)).toBe(false);
+    expect(isTransientProviderError(gateway)).toBe(true);
   });
 });

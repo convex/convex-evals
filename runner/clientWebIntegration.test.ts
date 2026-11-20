@@ -6,7 +6,11 @@ import { join } from "node:path";
 import { EmptyProviderResponseError, Model } from "./models/modelCodegen";
 import { resolveModelDefaults, SYSTEM_PROMPT } from "./models/index";
 import { validateClientWebRun } from "./models/clientWebResearch";
-import { ClientWebTimeoutError } from "./models/clientWebLoop";
+import {
+  ClientWebProviderError,
+  ClientWebTimeoutError,
+  modelRequestRetry,
+} from "./models/clientWebLoop";
 import { InfrastructureError } from "./convexBackend";
 import {
   computeWebUsage,
@@ -267,7 +271,7 @@ test.each([
   ["length", "", "graded"],
   ["stop", "", "retried"],
   ["stop", null, "retried"],
-  ["error", null, "retried"],
+  // An "error" finish is retried inside the loop now (see below).
 ])(
   "an empty %s turn (content %p) after a web search is %s",
   async (finishReason, content, expected) => {
@@ -431,9 +435,9 @@ test("model exhausting tool turns remains a scored failure with exact rejected c
   });
 });
 
-test("provider failure aborts as infrastructure and redacts credentials", async () => {
+test("a provider error the baseline does not retry aborts as infrastructure and redacts credentials", async () => {
   globalThis.fetch = Object.assign(
-    async () => Response.json({ error: "or-test-secret" }, { status: 500 }),
+    async () => Response.json({ error: "or-test-secret" }, { status: 401 }),
     { preconnect: fetchBefore.preconnect },
   ) as typeof fetch;
   const promise = new Model(
@@ -452,6 +456,280 @@ test("provider failure aborts as infrastructure and redacts credentials", async 
   expect(readFileSync(join(dir, "trace.jsonl"), "utf8")).not.toContain(
     "or-test-secret",
   );
+});
+
+// An OpenRouter 429 ("temporarily rate-limited upstream") threw out the GPT-6.2
+// Sol and Astra web runs in Nov 2026 on the first try. Other runs wait and
+// retry rate limits, 5xx errors and dropped connections, so web runs do too:
+// first the one request inside the loop, then the whole eval in the runner.
+const searchTurn = {
+  id: "gen-1",
+  choices: [
+    {
+      finish_reason: "tool_calls",
+      message: {
+        role: "assistant",
+        content: null,
+        tool_calls: [
+          {
+            id: "s1",
+            type: "function",
+            function: { name: "web_search", arguments: '{"query":"Convex"}' },
+          },
+        ],
+      },
+    },
+  ],
+};
+const failures: Record<string, () => Response> = {
+  "HTTP 429": () =>
+    Response.json(
+      { error: { message: "temporarily rate-limited upstream", code: 429 } },
+      { status: 429, headers: { "Retry-After": "0" } },
+    ),
+  "a 503 code in a 200 body": () =>
+    Response.json({ error: { message: "upstream down", code: 503 } }),
+  "a string 503 code in a 200 body": () =>
+    Response.json({ error: { message: "upstream down", code: "503" } }),
+  "an HTML 502 page from a proxy": () =>
+    new Response("<html>Bad Gateway</html>", {
+      status: 502,
+      headers: { "Content-Type": "text/html" },
+    }),
+  "an empty 503 body": () => new Response("", { status: 503 }),
+  "an error string in a 200 body": () =>
+    Response.json({ error: "Upstream error" }),
+  "a provider error on the choice": () =>
+    Response.json({
+      id: "gen-x",
+      choices: [
+        {
+          finish_reason: "error",
+          error: { code: 503, message: "Provider disconnected" },
+          message: { role: "assistant", content: "" },
+        },
+      ],
+    }),
+  "an error finish with no detail": () =>
+    Response.json({
+      id: "gen-x",
+      choices: [
+        {
+          finish_reason: "error",
+          message: { role: "assistant", content: null },
+        },
+      ],
+    }),
+  "a dropped connection": () => {
+    throw new TypeError("fetch failed");
+  },
+};
+const expectedStatus: Record<string, number> = {
+  "HTTP 429": 429,
+  "a 503 code in a 200 body": 503,
+  "a string 503 code in a 200 body": 503,
+  "an HTML 502 page from a proxy": 502,
+  "an empty 503 body": 503,
+  "an error string in a 200 body": 502,
+  "a provider error on the choice": 503,
+  "an error finish with no detail": 502,
+  "a dropped connection": 0,
+};
+function fakeOpenRouter(modelResponses: (() => Response)[]) {
+  const calls = { model: 0, exa: 0 };
+  globalThis.fetch = Object.assign(
+    async (url: string | URL | Request) => {
+      const requestUrl =
+        typeof url === "string" ? url : url instanceof URL ? url.href : url.url;
+      if (requestUrl.includes("api.exa.ai")) {
+        calls.exa++;
+        return Response.json({
+          requestId: "exa-1",
+          results: [],
+          costDollars: { total: 0.007 },
+        });
+      }
+      const next =
+        modelResponses[Math.min(calls.model, modelResponses.length - 1)];
+      calls.model++;
+      return next();
+    },
+    { preconnect: fetchBefore.preconnect },
+  ) as typeof fetch;
+  return calls;
+}
+const generate = () =>
+  new Model(
+    "or-test-secret",
+    resolveModelDefaults("openai/gpt-5.6-luna"),
+  ).generate("task", {
+    sessionId: "s",
+    webTracePath: join(dir, "trace.jsonl"),
+  });
+const realRetry = { ...modelRequestRetry };
+beforeEach(() => Object.assign(modelRequestRetry, { baseMs: 1, maxWaitMs: 5 }));
+afterEach(() => Object.assign(modelRequestRetry, realRetry));
+
+test.each(Object.keys(failures))(
+  "%s is retried inside the loop and keeps the search already made",
+  async (kind) => {
+    const calls = fakeOpenRouter([
+      () => Response.json(searchTurn),
+      failures[kind],
+      failures[kind],
+      () =>
+        Response.json({
+          id: "gen-2",
+          choices: [
+            {
+              finish_reason: "stop",
+              message: { role: "assistant", content: answer },
+            },
+          ],
+          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        }),
+    ]);
+    const result = await generate();
+    expect(result.files["convex/tasks.ts"]).toContain("complete");
+    expect(calls).toEqual({ model: 4, exa: 1 });
+    expect(result.usage?.raw).toMatchObject({
+      webResearch: { searchRequests: 1 },
+    });
+    const trace = readFileSync(join(dir, "trace.jsonl"), "utf8");
+    expect(trace.match(/"model_request_retry"/g)).toHaveLength(2);
+    expect(trace).toContain(`"status":${expectedStatus[kind]}`);
+  },
+);
+
+test.each([
+  ["before any web call", false, true],
+  ["after a web search", true, false],
+])(
+  "a 429 that outlasts the loop's retries %s is left to the runner to retry",
+  async (_label, searchFirst, noWebUsage) => {
+    const calls = fakeOpenRouter(
+      searchFirst
+        ? [() => Response.json(searchTurn), failures["HTTP 429"]]
+        : [failures["HTTP 429"]],
+    );
+    const error = await generate().catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ClientWebProviderError);
+    expect(error).not.toBeInstanceOf(InfrastructureError);
+    expect(error).toMatchObject({ status: 429, noWebUsage });
+    expect(calls.model).toBe(
+      modelRequestRetry.retries + 1 + (searchFirst ? 1 : 0),
+    );
+    expect((error as Error).message).toContain("(429)");
+    expect((error as Error).message).toContain(join(dir, "trace.jsonl"));
+    expect((error as Error).message).not.toContain("ClientWebProviderError");
+  },
+);
+
+test("a failed response's billed usage is kept", async () => {
+  fakeOpenRouter([
+    () =>
+      Response.json({
+        id: "gen-x",
+        choices: [
+          {
+            finish_reason: "error",
+            message: { role: "assistant", content: "" },
+          },
+        ],
+        usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8 },
+      }),
+    () =>
+      Response.json({
+        id: "gen-2",
+        choices: [
+          {
+            finish_reason: "stop",
+            message: { role: "assistant", content: answer },
+          },
+        ],
+        usage: { prompt_tokens: 7, completion_tokens: 2, total_tokens: 9 },
+      }),
+  ]);
+  const result = await generate();
+  expect(result.usage).toMatchObject({
+    inputTokens: 12,
+    outputTokens: 5,
+    totalTokens: 17,
+  });
+});
+
+test("an answer that finished normally is graded even with an error field", async () => {
+  const calls = fakeOpenRouter([
+    () =>
+      Response.json({
+        id: "gen-1",
+        choices: [
+          {
+            finish_reason: "stop",
+            error: null,
+            message: { role: "assistant", content: answer },
+          },
+        ],
+      }),
+  ]);
+  const result = await generate();
+  expect(result.files["convex/tasks.ts"]).toContain("complete");
+  expect(calls.model).toBe(1);
+});
+
+test("a 401 is not retried", async () => {
+  const calls = fakeOpenRouter([
+    () => Response.json({ error: { code: 401 } }, { status: 401 }),
+  ]);
+  await rejects(generate(), InfrastructureError);
+  expect(calls.model).toBe(1);
+});
+
+test("Retry-After below the cap sets the wait", async () => {
+  fakeOpenRouter([
+    () =>
+      Response.json(
+        { error: { code: 429 } },
+        { status: 429, headers: { "Retry-After": "0.003" } },
+      ),
+    () =>
+      Response.json({
+        id: "gen-2",
+        choices: [
+          {
+            finish_reason: "stop",
+            message: { role: "assistant", content: answer },
+          },
+        ],
+      }),
+  ]);
+  await generate();
+  expect(readFileSync(join(dir, "trace.jsonl"), "utf8")).toContain(
+    '"waitMs":3',
+  );
+});
+
+test("Retry-After sets the wait, up to the cap", async () => {
+  fakeOpenRouter([
+    () =>
+      Response.json(
+        { error: { code: 429 } },
+        { status: 429, headers: { "Retry-After": "120" } },
+      ),
+    () =>
+      Response.json({
+        id: "gen-2",
+        choices: [
+          {
+            finish_reason: "stop",
+            message: { role: "assistant", content: answer },
+          },
+        ],
+      }),
+  ]);
+  await generate();
+  const trace = readFileSync(join(dir, "trace.jsonl"), "utf8");
+  expect(trace).toContain(`"waitMs":${modelRequestRetry.maxWaitMs}`);
 });
 
 // A model that hadn't answered when the five-minute loop limit ran out used to
