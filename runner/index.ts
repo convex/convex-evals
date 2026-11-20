@@ -50,7 +50,10 @@ import {
   validateExperimentConfiguration,
 } from "./experiments.js";
 import { WebResearchProviderError } from "./models/webResearch.js";
-import { ClientWebTimeoutError } from "./models/clientWebLoop.js";
+import {
+  ClientWebProviderError,
+  ClientWebTimeoutError,
+} from "./models/clientWebLoop.js";
 import { requireWebResearchApiKey } from "./models/webResearchTools.js";
 import { computeBenchmarkDefinition } from "./benchmark.js";
 import {
@@ -736,7 +739,8 @@ async function processOneEval(
               ? e.generationId
               : undefined,
         ...((e instanceof EmptyProviderResponseError ||
-          e instanceof ClientWebTimeoutError) &&
+          e instanceof ClientWebTimeoutError ||
+          e instanceof ClientWebProviderError) &&
         e.noWebUsage
           ? { noWebUsage: true }
           : {}),
@@ -756,7 +760,9 @@ async function processOneEval(
         (e instanceof EmptyProviderResponseError &&
           isWebResearchExperiment(process.env.EVALS_EXPERIMENT) &&
           !e.noWebUsage) ||
-        (e instanceof ClientWebTimeoutError && !e.noWebUsage)
+        ((e instanceof ClientWebTimeoutError ||
+          e instanceof ClientWebProviderError) &&
+          !e.noWebUsage)
       ) {
         logInfo(
           `[${evalPathStr}] Failed-attempt usage and charges are excluded from reported totals; consult the research trace.`,
@@ -913,13 +919,13 @@ function isRateLimitError(errorStr: string): boolean {
   );
 }
 
-/** Whether a failed attempt was rate limited. A web loop timeout never is:
- * its message carries the trace path, and eval names such as
- * 005-choose_rate_limiter would otherwise match. */
+/** Whether a failed attempt was rate limited. Web loop errors carry the
+ * trace path in their message, and eval names such as 005-choose_rate_limiter
+ * would match the text, so they are judged by their status instead. */
 export function isRateLimitFailure(error: unknown): boolean {
-  return (
-    !(error instanceof ClientWebTimeoutError) && isRateLimitError(String(error))
-  );
+  if (error instanceof ClientWebTimeoutError) return false;
+  if (error instanceof ClientWebProviderError) return error.status === 429;
+  return isRateLimitError(String(error));
 }
 
 /** Detect empty/capacity/network failures that are safe to retry. */
@@ -927,6 +933,7 @@ export function isTransientProviderError(error: unknown): boolean {
   if (error instanceof WebResearchProviderError) return error.canRetry(0, 1);
   if (error instanceof EmptyProviderResponseError) return true;
   if (error instanceof ClientWebTimeoutError) return true;
+  if (error instanceof ClientWebProviderError) return true;
   const lower = String(error).toLowerCase();
   return (
     isRateLimitError(lower) ||

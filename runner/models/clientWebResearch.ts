@@ -1,7 +1,11 @@
 import type { LanguageModelUsage } from "ai";
 import { WEB_SOURCE_POLICY } from "./webSourcePolicy";
 import { InfrastructureError } from "../convexBackend";
-import { ClientWebTimeoutError, runClientWebLoop } from "./clientWebLoop";
+import {
+  ClientWebProviderError,
+  ClientWebTimeoutError,
+  runClientWebLoop,
+} from "./clientWebLoop";
 import {
   createJournal,
   jsonRecord,
@@ -184,6 +188,14 @@ export async function generateWithClientWeb(options: {
     if (error instanceof ClientWebTimeoutError)
       throw new ClientWebTimeoutError(
         `Client web generation timed out; trace ${options.tracePath}: ${message.replace(/^ClientWebTimeoutError: /, "")}`,
+        error.noWebUsage,
+      );
+    // A rate limit or gateway error is retried like the baseline's, on the
+    // same terms as a timeout.
+    if (error instanceof ClientWebProviderError)
+      throw new ClientWebProviderError(
+        `Client web model request failed; trace ${options.tracePath}: ${message.replace(/^ClientWebProviderError: /, "")}`,
+        error.status,
         error.noWebUsage,
       );
     // Do not let the runner retry a paid tool loop that failed partway for

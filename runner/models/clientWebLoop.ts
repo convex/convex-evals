@@ -33,6 +33,24 @@ export class ClientWebTimeoutError extends Error {
   }
 }
 
+/** OpenRouter answered a model request with a status the baseline retries:
+ * rate limited (429) or a gateway error (502, 503, 504). Other runs wait and
+ * retry these, so the runner does too rather than failing the whole run. */
+export class ClientWebProviderError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    /** No search or fetch was made, so dropping the attempt hides no web
+     * usage (see EmptyProviderResponseError). */
+    readonly noWebUsage: boolean,
+  ) {
+    super(message);
+    this.name = "ClientWebProviderError";
+  }
+}
+
+const RETRYABLE_MODEL_STATUSES = [429, 502, 503, 504];
+
 export async function runClientWebLoop(options: {
   model: string;
   purpose?: "smoke" | "eval-generation";
@@ -138,10 +156,22 @@ export async function runClientWebLoop(options: {
         httpStatus: response.status,
         data,
       });
-      if (!response.ok || data.error)
-        throw new Error(
-          `Model request failed (${response.status}): ${JSON.stringify(data.error)}`,
-        );
+      if (!response.ok || data.error) {
+        // OpenRouter can also put an error, with its own code, in a 200 body.
+        const code = jsonRecord(data.error).code;
+        const status =
+          response.ok && typeof code === "number" ? code : response.status;
+        const message = `Model request failed (${status}): ${JSON.stringify(data.error)}`;
+        if (RETRYABLE_MODEL_STATUSES.includes(status)) {
+          const summary = tools.summary();
+          throw new ClientWebProviderError(
+            message,
+            status,
+            summary.searchAttempts + summary.fetchAttempts === 0,
+          );
+        }
+        throw new Error(message);
+      }
       usage.push(data.usage);
       const choice = jsonRecord(
         Array.isArray(data.choices) ? data.choices[0] : undefined,

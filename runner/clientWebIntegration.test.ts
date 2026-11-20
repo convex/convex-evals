@@ -6,7 +6,10 @@ import { join } from "node:path";
 import { EmptyProviderResponseError, Model } from "./models/modelCodegen";
 import { resolveModelDefaults, SYSTEM_PROMPT } from "./models/index";
 import { validateClientWebRun } from "./models/clientWebResearch";
-import { ClientWebTimeoutError } from "./models/clientWebLoop";
+import {
+  ClientWebProviderError,
+  ClientWebTimeoutError,
+} from "./models/clientWebLoop";
 import { InfrastructureError } from "./convexBackend";
 import {
   computeWebUsage,
@@ -453,6 +456,84 @@ test("provider failure aborts as infrastructure and redacts credentials", async 
     "or-test-secret",
   );
 });
+
+// An OpenRouter 429 ("temporarily rate-limited upstream") threw out the GPT-6.2
+// Sol and Astra web runs in Nov 2026 on the first try. Other runs wait and
+// retry rate limits and gateway errors, so web runs do too.
+test.each([
+  ["a 429 before any web call", 429, 200, false, true],
+  ["a 429 after a web search", 429, 200, true, false],
+  ["a 503 error in a 200 body", 503, 200, false, true],
+  ["a 502 response", 502, 502, false, true],
+])(
+  "%s is retryable",
+  async (_label, status, httpStatus, searchFirst, noWebUsage) => {
+    let turn = 0;
+    globalThis.fetch = Object.assign(
+      async (url: string | URL | Request) => {
+        const requestUrl =
+          typeof url === "string"
+            ? url
+            : url instanceof URL
+              ? url.href
+              : url.url;
+        if (requestUrl.includes("api.exa.ai"))
+          return Response.json({
+            requestId: "exa-1",
+            results: [],
+            costDollars: { total: 0.007 },
+          });
+        turn++;
+        if (searchFirst && turn === 1)
+          return Response.json({
+            id: "gen-1",
+            choices: [
+              {
+                finish_reason: "tool_calls",
+                message: {
+                  role: "assistant",
+                  content: null,
+                  tool_calls: [
+                    {
+                      id: "s1",
+                      type: "function",
+                      function: {
+                        name: "web_search",
+                        arguments: '{"query":"Convex"}',
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          });
+        const error = {
+          message: "temporarily rate-limited upstream",
+          code: status,
+        };
+        return httpStatus === 200
+          ? Response.json({ error })
+          : Response.json({ error }, { status: httpStatus });
+      },
+      { preconnect: fetchBefore.preconnect },
+    ) as typeof fetch;
+    const error = await new Model(
+      "or-test-secret",
+      resolveModelDefaults("openai/gpt-5.6-luna"),
+    )
+      .generate("task", {
+        sessionId: "s",
+        webTracePath: join(dir, "trace.jsonl"),
+      })
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ClientWebProviderError);
+    expect(error).not.toBeInstanceOf(InfrastructureError);
+    expect(error).toMatchObject({ status, noWebUsage });
+    expect((error as Error).message).toContain(`(${status})`);
+    expect((error as Error).message).toContain(join(dir, "trace.jsonl"));
+    expect((error as Error).message).not.toContain("ClientWebProviderError");
+  },
+);
 
 // A model that hadn't answered when the five-minute loop limit ran out used to
 // abort the whole run (11 of 40 web runs in Nov 2026). The baseline retries
