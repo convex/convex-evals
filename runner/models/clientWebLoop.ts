@@ -149,7 +149,19 @@ export async function runClientWebLoop(options: {
         turn,
         httpStatus: response.status,
       });
-      const data = jsonRecord(await readBoundedJson(response));
+      let data: ReturnType<typeof jsonRecord>;
+      try {
+        data = jsonRecord(await readBoundedJson(response));
+      } catch (readError) {
+        // A proxy in front of OpenRouter can answer a 429 or 502 with an HTML
+        // page. That is still a status to retry, not a broken run.
+        if (
+          signal.aborted ||
+          !RETRYABLE_MODEL_STATUSES.includes(response.status)
+        )
+          throw readError;
+        data = { error: `Unreadable ${response.status} response body` };
+      }
       options.journal({
         kind: "model_response",
         turn,

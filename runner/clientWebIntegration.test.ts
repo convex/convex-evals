@@ -465,9 +465,10 @@ test.each([
   ["a 429 after a web search", 429, 200, true, false],
   ["a 503 error in a 200 body", 503, 200, false, true],
   ["a 502 response", 502, 502, false, true],
+  ["a 503 HTML page from a proxy", 503, 503, false, true],
 ])(
   "%s is retryable",
-  async (_label, status, httpStatus, searchFirst, noWebUsage) => {
+  async (label, status, httpStatus, searchFirst, noWebUsage) => {
     let turn = 0;
     globalThis.fetch = Object.assign(
       async (url: string | URL | Request) => {
@@ -511,6 +512,11 @@ test.each([
           message: "temporarily rate-limited upstream",
           code: status,
         };
+        if (label.includes("HTML"))
+          return new Response("<html>Service Unavailable</html>", {
+            status: httpStatus,
+            headers: { "Content-Type": "text/html" },
+          });
         return httpStatus === 200
           ? Response.json({ error })
           : Response.json({ error }, { status: httpStatus });
