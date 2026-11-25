@@ -36,6 +36,7 @@ describe("ALL_MODELS", () => {
     expect(ALL_MODELS).toContain("anthropic/claude-haiku-5.5");
     expect(ALL_MODELS).toContain("openai/gpt-6.2-astra");
     expect(ALL_MODELS).toContain("openai/gpt-6.2-sol");
+    expect(ALL_MODELS).toContain("google/gemini-4-neon");
     expect(ALL_MODELS).toContain("google/gemini-4-argon");
     expect(ALL_MODELS).toContain("deepseek/deepseek-v4-pro");
     expect(ALL_MODELS).toContain("z-ai/glm-5.3-flash");
